@@ -149,6 +149,7 @@ export function activate(context: vscode.ExtensionContext) {
   })
 
   // Analyze on file save
+  // Analyze on file save
   const saveListener = vscode.workspace.onDidSaveTextDocument(
     async (document) => {
       if (gitignore && (await isFileIgnored(document.fileName, gitignore))) {
@@ -160,6 +161,9 @@ export function activate(context: vscode.ExtensionContext) {
       console.debug(`Cache updated for: ${document.fileName}`)
       showDebugNotification(`Cache updated for: ${document.fileName}`)
 
+      const config = vscode.workspace.getConfiguration("shift-v2")
+      const debugMode = config.get("debugMode", true) // Default to true as per original code
+
       if (!isAnalyzing) {
         isAnalyzing = true
         console.debug("Starting codebase analysis")
@@ -168,6 +172,24 @@ export function activate(context: vscode.ExtensionContext) {
           const issues = await analyzeCodebase()
           console.debug(`Found ${issues.length} issues`)
           showDebugNotification(`Found ${issues.length} issues`)
+
+          // If no issues found but debug mode is on, inject a sample issue
+          if (issues.length === 0 && debugMode) {
+            console.debug("No issues found, injecting sample debug issue")
+            showDebugNotification(
+              "No issues found, injecting sample debug issue"
+            )
+            const sampleIssue: Issue = {
+              file: document.fileName,
+              location: "Line 1",
+              description: "Debug mode sample issue",
+              explanation:
+                "This is a test issue to ensure notifications work in debug mode.",
+              suggestion: "No action needed, this is a debug placeholder."
+            }
+            issues.push(sampleIssue)
+          }
+
           for (const issue of issues) {
             console.debug(
               `Notifying issue in ${issue.file}: ${issue.description}`
@@ -195,6 +217,34 @@ export function activate(context: vscode.ExtensionContext) {
           console.debug("Codebase analysis completed")
           showDebugNotification("Codebase analysis completed")
         }
+      } else if (debugMode) {
+        // If analysis is skipped but debug mode is on, still show a sample issue
+        console.debug("Analysis skipped, showing sample debug issue")
+        showDebugNotification("Analysis skipped, showing sample debug issue")
+        const sampleIssue: Issue = {
+          file: document.fileName,
+          location: "Line 1",
+          description: "Debug mode sample issue (analysis skipped)",
+          explanation:
+            "Analysis was skipped (e.g., already in progress), but debug mode triggered this.",
+          suggestion: "No action needed, this is a debug placeholder."
+        }
+        vscode.window
+          .showInformationMessage(
+            `Issue in ${sampleIssue.file}: ${sampleIssue.description}`,
+            "See details"
+          )
+          .then((selection) => {
+            if (selection === "See details") {
+              console.debug(
+                `Showing details for sample debug issue in ${sampleIssue.file}`
+              )
+              showDebugNotification(
+                `Showing details for sample debug issue in ${sampleIssue.file}`
+              )
+              showIssueDetails(sampleIssue)
+            }
+          })
       } else {
         console.debug("Skipping analysis - already in progress")
         showDebugNotification("Skipping analysis - already in progress")
