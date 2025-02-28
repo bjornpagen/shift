@@ -10,7 +10,7 @@ interface IgnoreInstance {
 }
 
 // Global state
-const codebaseCache: Map<string, string> = new Map()
+export const codebaseCache: Map<string, string> = new Map()
 const previousCodebaseCache: Map<string, string> = new Map()
 let isAnalyzing = false
 let hasSentInitialCodebase = false
@@ -156,13 +156,21 @@ export function activate(context: vscode.ExtensionContext) {
           if (!hasSentInitialCodebase) {
             userContent = "# Initial Codebase\n\n"
             for (const [filePath, content] of codebaseCache) {
-              userContent += `## File: ${filePath}\n\n\`\`\`typescript\n${content}\n\`\`\`\n\n`
+              const lines = content.split("\n")
+              const numberedContent = lines
+                .map((line, index) => `${index + 1}: ${line}`)
+                .join("\n")
+              userContent += `## File: ${filePath}\n\n\`\`\`typescript\n${numberedContent}\n\`\`\`\n\n`
             }
             hasSentInitialCodebase = true
           } else {
             const newContent = document.getText()
+            const lines = newContent.split("\n")
+            const numberedContent = lines
+              .map((line, index) => `${index + 1}: ${line}`)
+              .join("\n")
             const diff = computeDiff(oldContent, newContent)
-            userContent = `# Changed File: ${document.fileName}\n\n## Diff\n\`\`\`diff\n${diff}\n\`\`\`\n\n## Updated Content\n\`\`\`typescript\n${newContent}\n\`\`\``
+            userContent = `# Changed File: ${document.fileName}\n\n## Diff\n\`\`\`diff\n${diff}\n\`\`\`\n\n## Updated Content\n\`\`\`typescript\n${numberedContent}\n\`\`\``
           }
           const issues = await analyze(userContent)
           console.debug(`Found ${issues.length} issues`)
@@ -171,9 +179,13 @@ export function activate(context: vscode.ExtensionContext) {
             console.debug(
               `Notifying issue in ${issue.file}: ${issue.description}`
             )
+            const relativeFile = vscode.workspace.asRelativePath(
+              issue.file,
+              false
+            )
             await vscode.window
               .showWarningMessage(
-                `Issue in ${issue.file}: ${issue.description}`,
+                `Issue in ${relativeFile}: ${issue.description}`,
                 "Tell Me More"
               )
               .then((selection) => {
