@@ -6,7 +6,7 @@
   "engines": {
     "vscode": "^1.96.0"
   },
-  "categories": ["Other"],
+  "categories": ["Formatters", "Linters"],
   "activationEvents": [
     "onLanguage:javascript",
     "onLanguage:typescript",
