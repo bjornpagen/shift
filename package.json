@@ -13,12 +13,6 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "shift-v2.helloWorld",
-        "title": "Hello World"
-      }
-    ],
     "configuration": {
       "type": "object",
       "title": "Shift-V2 Settings",
