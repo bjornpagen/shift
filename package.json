@@ -7,7 +7,10 @@
     "vscode": "^1.96.0"
   },
   "categories": ["Other"],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished",
+    "workspaceContains:**/*.{js,ts,jsx,tsx}"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
