@@ -10,7 +10,9 @@ interface IgnoreInstance {
 
 // Global state
 const codebaseCache: Map<string, string> = new Map()
+const previousCodebaseCache: Map<string, string> = new Map() // Track previous versions for diffs
 let isAnalyzing = false
+let hasSentInitialCodebase = false // Flag to track if initial full codebase was sent
 
 // Parse .gitignore files and return an ignore instance
 async function getGitignorePatterns(): Promise<IgnoreInstance> {
@@ -35,6 +37,15 @@ async function isFileIgnored(
 ): Promise<boolean> {
   const relativePath = vscode.workspace.asRelativePath(filePath, false)
   return ig.ignores(relativePath)
+}
+
+// Compute a simple diff between old and new content
+function computeDiff(oldContent: string, newContent: string): string {
+  if (!oldContent) {
+    return `New file created:\n${newContent}`
+  }
+  // For simplicity, show old and new content; in production, use a proper diff library
+  return `Old version:\n${oldContent}\n\nNew version:\n${newContent}`
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -86,6 +97,7 @@ export function activate(context: vscode.ExtensionContext) {
         const content = await vscode.workspace.fs.readFile(file)
         const decodedContent = new TextDecoder().decode(content)
         codebaseCache.set(file.fsPath, decodedContent)
+        previousCodebaseCache.set(file.fsPath, decodedContent) // Initialize previous state
         progress.report({ increment: 100 / filteredFiles.length })
         console.debug(`Cached file: ${file.fsPath}`)
       }
@@ -110,6 +122,7 @@ export function activate(context: vscode.ExtensionContext) {
       console.debug(`File deleted: ${uri.fsPath}`)
     }
     codebaseCache.delete(uri.fsPath)
+    previousCodebaseCache.delete(uri.fsPath)
     console.debug(`Removed from cache: ${uri.fsPath}`)
   })
   fileWatcher.onDidChange(async (uri) => {
@@ -131,6 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
         return
       }
       console.debug(`File saved: ${document.fileName}`)
+      const oldContent = codebaseCache.get(document.fileName) || ""
       codebaseCache.set(document.fileName, document.getText())
       console.debug(`Cache updated for: ${document.fileName}`)
 
@@ -138,7 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
         isAnalyzing = true
         console.debug("Starting codebase analysis")
         try {
-          const issues = await analyzeCodebase()
+          const issues = await analyzeCodebase(document.fileName, oldContent)
           console.debug(`Found ${issues.length} issues`)
 
           for (const issue of issues) {
@@ -158,6 +172,7 @@ export function activate(context: vscode.ExtensionContext) {
               })
           }
         } finally {
+          previousCodebaseCache.set(document.fileName, document.getText()) // Update previous state
           isAnalyzing = false
           console.debug("Codebase analysis completed")
         }
@@ -179,7 +194,10 @@ interface Issue {
   suggestion: string
 }
 
-async function analyzeCodebase(): Promise<Issue[]> {
+async function analyzeCodebase(
+  changedFile: string,
+  oldContent: string
+): Promise<Issue[]> {
   const config = vscode.workspace.getConfiguration("shift-v2")
   const apiKey = config.get("anthropicApiKey")
   if (!apiKey) {
@@ -193,7 +211,7 @@ async function analyzeCodebase(): Promise<Issue[]> {
   console.debug("Initializing Anthropic client")
   const anthropic = new Anthropic({ apiKey: apiKey as string })
 
-  const analysisInstructions = `You are an AI assistant tasked with analyzing codebases for architectural issues. Analyze the provided codebase and identify any architectural issues such as N+1 queries, suboptimal component usage, or inefficient data fetching. For each issue, provide the following fields separated by a "|" character, with each issue separated by "---":
+  const analysisInstructions = `You are an AI assistant tasked with analyzing codebases for architectural issues. When given the full codebase initially, store it in your context. For subsequent requests, analyze the provided diff or changed file content in the context of the previously seen codebase. Identify architectural issues such as N+1 queries, suboptimal component usage, or inefficient data fetching. For each issue, provide the following fields separated by a "|" character, with each issue separated by "---":
 
 - The file where the issue is located.
 - A code snippet or function name to identify the location.
@@ -208,9 +226,21 @@ file1.ts|function fetchData|N+1 query detected|Multiple database queries in a lo
 file2.js|component render|Suboptimal component usage|Re-rendering occurs due to missing memoization|Add React.memo to prevent unnecessary renders
 `
 
-  let codebaseContent = "# Codebase\n\n"
-  for (const [filePath, content] of codebaseCache) {
-    codebaseContent += `## File: ${filePath}\n\n\`\`\`typescript\n${content}\n\`\`\`\n\n`
+  let userContent: string
+  if (!hasSentInitialCodebase) {
+    // Send the full codebase on the first run
+    userContent = "# Initial Codebase\n\n"
+    for (const [filePath, content] of codebaseCache) {
+      userContent += `## File: ${filePath}\n\n\`\`\`typescript\n${content}\n\`\`\`\n\n`
+    }
+    hasSentInitialCodebase = true
+    console.debug("Sending initial full codebase to Anthropic")
+  } else {
+    // Send only the diff and updated file content for the changed file
+    const newContent = codebaseCache.get(changedFile) || ""
+    const diff = computeDiff(oldContent, newContent)
+    userContent = `# Changed File: ${changedFile}\n\n## Diff\n\`\`\`diff\n${diff}\n\`\`\`\n\n## Updated Content\n\`\`\`typescript\n${newContent}\n\`\`\``
+    console.debug(`Sending diff for ${changedFile} to Anthropic`)
   }
 
   try {
@@ -228,24 +258,25 @@ file2.js|component render|Suboptimal component usage|Re-rendering occurs due to 
       messages: [
         {
           role: "user",
-          content: codebaseContent
+          content: userContent
         }
       ],
       temperature: 0 // Ensures consistent output
     })
 
-    const responseContent = response.content[0].text.trim()
+    const responseContent =
+      response.content[0].type === "text" ? response.content[0].text.trim() : ""
     console.debug("Received response from Anthropic:", responseContent)
 
     // Parse the plain text response
     if (!responseContent) {
-      console.debug("No issues found in codebase")
+      console.debug("No issues found in analysis")
       return []
     }
 
     const issueLines = responseContent
       .split("---")
-      .filter((line) => line.trim())
+      .filter((line: string) => line.trim())
     const issues: Issue[] = []
 
     for (const line of issueLines) {
@@ -316,7 +347,7 @@ Please provide a detailed response.
             const anthropic = new Anthropic({ apiKey: apiKey as string })
             anthropic.messages
               .create({
-                model: "claude-3-5-sonnet-20240620", // Adjust to 3.7 if available
+                model: "claude-3-5-sonnet-20240620",
                 max_tokens: 1024,
                 messages: [
                   {
