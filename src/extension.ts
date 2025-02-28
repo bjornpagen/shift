@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import OpenAI from "openai"
+import Anthropic from "@anthropic-ai/sdk"
 import ignore from "ignore"
 
 // Define a type for the ignore instance
@@ -181,73 +181,98 @@ interface Issue {
 
 async function analyzeCodebase(): Promise<Issue[]> {
   const config = vscode.workspace.getConfiguration("shift-v2")
-  const apiKey = config.get("openaiApiKey")
+  const apiKey = config.get("anthropicApiKey")
   if (!apiKey) {
-    console.debug("No OpenAI API key found")
+    console.debug("No Anthropic API key found")
     vscode.window.showErrorMessage(
-      "OpenAI API key is not set. Please set it in the extension settings."
+      "Anthropic API key is not set. Please set it in the extension settings."
     )
     return []
   }
 
-  console.debug("Initializing OpenAI client")
-  const openai = new OpenAI({ apiKey: apiKey as string })
-  const prompt = preparePrompt(codebaseCache)
-  console.debug("Prepared prompt for analysis")
+  console.debug("Initializing Anthropic client")
+  const anthropic = new Anthropic({ apiKey: apiKey as string })
 
-  try {
-    console.debug("Sending request to OpenAI API")
-    const completion = await openai.chat.completions.create({
-      model: "o3-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" }
-    })
-    const responseContent = completion.choices[0].message.content
-    if (!responseContent) {
-      console.error("No content received from OpenAI")
-      return []
-    }
-    console.debug("Received response from OpenAI")
-    const jsonResponse = JSON.parse(responseContent)
-    console.debug("Parsed JSON response")
-    return jsonResponse.issues || []
-  } catch (error) {
-    console.error("Error during OpenAI API call:", error)
-    vscode.window.showErrorMessage(
-      "Failed to analyze codebase. See console for details."
-    )
-    return []
-  }
-}
+  const analysisInstructions = `You are an AI assistant tasked with analyzing codebases for architectural issues. Analyze the provided codebase and identify any architectural issues such as N+1 queries, suboptimal component usage, or inefficient data fetching. For each issue, provide the following fields separated by a "|" character, with each issue separated by "---":
 
-function preparePrompt(cache: Map<string, string>): string {
-  console.debug("Preparing prompt from cache")
-  let prompt = "# Codebase\n\n"
-  for (const [filePath, content] of cache) {
-    prompt += `## File: ${filePath}\n\n\`\`\`typescript\n${content}\n\`\`\`\n\n`
-  }
-  prompt += `
-Analyze the above codebase and identify any architectural issues such as N+1 queries, suboptimal component usage, or inefficient data fetching. For each issue, provide:
 - The file where the issue is located.
 - A code snippet or function name to identify the location.
 - A brief description of the issue.
 - An explanation of why it's a problem.
 - A suggested fix.
-Return the response in JSON format with the following structure:
-{
-  "issues": [
-    {
-      "file": "string",
-      "location": "string",
-      "description": "string",
-      "explanation": "string",
-      "suggestion": "string"
-    }
-  ]
-}
+
+**Important**: Respond with plain text only, using this exact format. Do not include JSON, extra explanations, or any text outside the issue list. Use "---" to separate issues and "|" to separate fields within an issue. If no issues are found, return an empty string.
+
+Example response:
+file1.ts|function fetchData|N+1 query detected|Multiple database queries in a loop reduce performance|Use a single batch query instead---
+file2.js|component render|Suboptimal component usage|Re-rendering occurs due to missing memoization|Add React.memo to prevent unnecessary renders
 `
-  console.debug("Prompt preparation completed")
-  return prompt
+
+  let codebaseContent = "# Codebase\n\n"
+  for (const [filePath, content] of codebaseCache) {
+    codebaseContent += `## File: ${filePath}\n\n\`\`\`typescript\n${content}\n\`\`\`\n\n`
+  }
+
+  try {
+    console.debug("Sending request to Anthropic API")
+    const response = await anthropic.messages.create({
+      model: "claude-3-5-sonnet-20240620",
+      max_tokens: 1024,
+      system: [
+        {
+          type: "text",
+          text: analysisInstructions,
+          cache_control: { type: "ephemeral" }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: codebaseContent
+        }
+      ],
+      temperature: 0 // Ensures consistent output
+    })
+
+    const responseContent = response.content[0].text.trim()
+    console.debug("Received response from Anthropic:", responseContent)
+
+    // Parse the plain text response
+    if (!responseContent) {
+      console.debug("No issues found in codebase")
+      return []
+    }
+
+    const issueLines = responseContent
+      .split("---")
+      .filter((line) => line.trim())
+    const issues: Issue[] = []
+
+    for (const line of issueLines) {
+      const [file, location, description, explanation, suggestion] =
+        line.split("|")
+      if (!file || !location || !description || !explanation || !suggestion) {
+        console.error("Malformed issue line:", line)
+        continue // Skip malformed lines
+      }
+      issues.push({
+        file: file.trim(),
+        location: location.trim(),
+        description: description.trim(),
+        explanation: explanation.trim(),
+        suggestion: suggestion.trim()
+      })
+    }
+
+    console.debug(`Parsed ${issues.length} issues from response`)
+    return issues
+  } catch (error) {
+    console.error("Error during Anthropic API call:", error)
+    vscode.window.showErrorMessage(
+      "Failed to analyze codebase. See console for details."
+    )
+    return []
+  }
 }
 
 function showIssueDetails(issue: Issue) {
@@ -281,25 +306,34 @@ Please provide a detailed response.
 `
             const apiKey = vscode.workspace
               .getConfiguration("shift-v2")
-              .get("openaiApiKey")
+              .get("anthropicApiKey")
             if (!apiKey) {
-              console.debug("No OpenAI API key for clarification")
-              vscode.window.showErrorMessage("OpenAI API key is not set.")
+              console.debug("No Anthropic API key for clarification")
+              vscode.window.showErrorMessage("Anthropic API key is not set.")
               return
             }
-            console.debug("Sending clarification request to OpenAI")
-            const openai = new OpenAI({ apiKey: apiKey as string })
-            openai.chat.completions
+            console.debug("Sending clarification request to Anthropic")
+            const anthropic = new Anthropic({ apiKey: apiKey as string })
+            anthropic.messages
               .create({
-                model: "o3-mini",
-                messages: [{ role: "user", content: followUpPrompt }]
+                model: "claude-3-5-sonnet-20240620", // Adjust to 3.7 if available
+                max_tokens: 1024,
+                messages: [
+                  {
+                    role: "user",
+                    content: followUpPrompt
+                  }
+                ]
               })
-              .then((completion) => {
-                const response = completion.choices[0].message.content
+              .then((response) => {
+                const clarification =
+                  response.content[0].type === "text"
+                    ? response.content[0].text
+                    : ""
                 console.debug("Received clarification response")
                 panel.webview.postMessage({
                   command: "showResponse",
-                  text: response
+                  text: clarification
                 })
               })
               .catch((error) => {
