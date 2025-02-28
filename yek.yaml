@@ -3,5 +3,4 @@ ignore_patterns:
   - "yek.yaml"
   - "bun.lock"
   - "biome.json"
-  - "package.json"
   - "tsconfig.json"

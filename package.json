@@ -8,8 +8,10 @@
   },
   "categories": ["Other"],
   "activationEvents": [
-    "onStartupFinished",
-    "workspaceContains:**/*.{js,ts,jsx,tsx}"
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescriptreact"
   ],
   "main": "./out/extension.js",
   "contributes": {

@@ -48,6 +48,18 @@ async function isFileIgnored(
 }
 
 export function activate(context: vscode.ExtensionContext) {
+  // Check if a workspace is open
+  if (
+    !vscode.workspace.workspaceFolders ||
+    vscode.workspace.workspaceFolders.length === 0
+  ) {
+    console.debug(
+      "No workspace open, delaying activation until a workspace is loaded"
+    )
+    showDebugNotification("No workspace open, delaying activation")
+    return
+  }
+
   console.debug("Shift-V2 extension activated")
   showDebugNotification("Extension activated")
 
@@ -57,7 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
     gitignore = ig
   })
 
-  // Load codebase into cache on startup
+  // Load codebase into cache when a workspace is confirmed
   vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -114,7 +126,6 @@ export function activate(context: vscode.ExtensionContext) {
   })
   fileWatcher.onDidDelete((uri) => {
     if (gitignore && codebaseCache.has(uri.fsPath)) {
-      // Only log if it was cached
       console.debug(`File deleted: ${uri.fsPath}`)
       showDebugNotification(`File deleted: ${uri.fsPath}`)
     }
