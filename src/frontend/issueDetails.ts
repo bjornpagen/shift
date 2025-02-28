@@ -1,5 +1,4 @@
 import * as vscode from "vscode"
-import { getClarification } from "../backend/api"
 import { codebaseCache } from "../extension"
 import type { Issue } from "../types"
 
@@ -47,8 +46,13 @@ export function showIssueDetails(issue: Issue) {
   }
   panel.webview.html = getIssueDetailsHtml(issue, codeSnippet, lineRange)
 
-  panel.webview.onDidReceiveMessage((message) => {
-    if (message.command === "openFile") {
+  panel.webview.onDidReceiveMessage((message: { 
+    command: string;
+    file?: string;
+    startLine?: number;
+    endLine?: number;
+  }) => {
+    if (message.command === "openFile" && message.file && message.startLine && message.endLine) {
       const absPath = getAbsolutePath(message.file)
       if (absPath) {
         const uri = vscode.Uri.file(absPath)
@@ -59,36 +63,28 @@ export function showIssueDetails(issue: Issue) {
       } else {
         vscode.window.showErrorMessage(`File not found: ${message.file}`)
       }
-    } else if (message.command === "clarify") {
-      vscode.window
-        .showInputBox({ prompt: "Ask your question about this issue" })
-        .then((question) => {
-          if (question) {
-            const followUpPrompt = `
-Regarding the following issue:
-File: ${issue.file}
-Location: ${issue.location}
-Description: ${issue.description}
-Explanation: ${issue.explanation}
-Suggestion: ${issue.suggestion}
-The user has asked: "${question}"
-Please provide a detailed response.
-`
-            getClarification(followUpPrompt)
-              .then((clarification) => {
-                panel.webview.postMessage({
-                  command: "showResponse",
-                  text: clarification
-                })
-              })
-              .catch((error) => {
-                console.error("Error during clarification:", error)
-                vscode.window.showErrorMessage(
-                  "Failed to get clarification. See console for details."
-                )
-              })
-          }
-        })
+    } else if (message.command === "copyToClipboard") {
+      const content = [
+        `Issue in ${issue.file}`,
+        `Location: ${issue.location}`,
+        `Description: ${issue.description}`,
+        `Explanation: ${issue.explanation}`,
+        `Suggestion: ${issue.suggestion}`,
+        ...(codeSnippet ? [`Code Snippet:\n${codeSnippet}`] : [])
+      ].join("\n");
+      
+      void vscode.env.clipboard.writeText(content).then(() => {
+        panel.webview.postMessage({
+          command: "copySuccess",
+          text: "Issue details copied to clipboard!"
+        });
+      }, (error: Error) => {
+        console.error("Failed to copy to clipboard:", error);
+        panel.webview.postMessage({
+          command: "copyError",
+          text: "Failed to copy issue details."
+        });
+      });
     }
   })
 }
@@ -119,8 +115,8 @@ function getIssueDetailsHtml(
     h2 { font-size: 1.2em; margin-top: 20px; }
     p { margin: 10px 0; }
     pre { background-color: #f0f0f0; padding: 10px; overflow: auto; }
-    button { padding: 8px 16px; cursor: pointer; }
-    #response { margin-top: 20px; }
+    button { padding: 8px 16px; cursor: pointer; margin-right: 10px; }
+    #feedback { margin-top: 10px; color: #555; }
   </style>
 </head>
 <body>
@@ -131,18 +127,23 @@ function getIssueDetailsHtml(
   <p><strong>Suggestion:</strong> ${issue.suggestion}</p>
   ${codeSection}
   ${openButton}
-  <button onclick="vscode.postMessage({ command: 'clarify' })">Ask for Clarification</button>
-  <div id="response"></div>
+  <button onclick="copyToClipboard()">Copy Issue Details</button>
+  <div id="feedback"></div>
   <script>
     const vscode = acquireVsCodeApi();
     function openFile(file, startLine, endLine) {
       vscode.postMessage({ command: 'openFile', file: file, startLine: startLine, endLine: endLine });
     }
+    function copyToClipboard() {
+      vscode.postMessage({ command: 'copyToClipboard' });
+    }
     window.addEventListener('message', event => {
       const message = event.data;
-      if (message.command === 'showResponse') {
-        document.getElementById('response').innerHTML =
-          '<h2>Clarification:</h2><p>' + message.text + '</p>';
+      if (message.command === 'copySuccess' || message.command === 'copyError') {
+        document.getElementById('feedback').innerText = message.text;
+        setTimeout(() => {
+          document.getElementById('feedback').innerText = '';
+        }, 3000); // Clear feedback after 3 seconds
       }
     });
   </script>
