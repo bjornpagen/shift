@@ -29,17 +29,12 @@ export async function analyzeCodebase(
       {
         role: "user",
         content: user
-      },
-      {
-        role: "assistant",
-        content: "[" // Prefill with JSON array start
       }
-    ],
-    temperature: 0
+    ]
   })
-  if (response.content[0].type === "text") {
-    const continuation = response.content[0].text.trim()
-    return `[${continuation}` // Combine prefill with continuation
+  const textContent = response.content.find((item) => item.type === "text")
+  if (textContent) {
+    return textContent.text.trim()
   }
   return ""
 }
@@ -61,5 +56,6 @@ export async function getClarification(prompt: string): Promise<string> {
       }
     ]
   })
-  return response.content[0].type === "text" ? response.content[0].text : ""
+  const textContent = response.content.find((item) => item.type === "text")
+  return textContent ? textContent.text : ""
 }
