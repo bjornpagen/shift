@@ -47,6 +47,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "ignore": "^7.0.3",
     "openai": "^4.86.1"
   }
 }
