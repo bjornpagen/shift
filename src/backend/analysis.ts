@@ -51,7 +51,7 @@ These are real examples flagged previously that do **not** qualify as architectu
     "file": "/app/users.ts",
     "location": "lines 5-10",
     "description": "N+1 query in user fetch loop.",
-    "explanation": "A loop runs a query per user, firing 100 queries for 100 users instead of 1. This increases latency from 50ms to 5s as user count grows. Separate queries also spike database CPU usage by 80%.",
+    "explanation": "A loop runs a query per user, firing 100 queries for 100 users instead of 1. This increases latency as user count grows.",
     "suggestion": "Use a single 'SELECT * FROM posts WHERE user_id IN (...)' query to fetch all data at once."
   }
 ]
