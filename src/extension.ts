@@ -182,6 +182,7 @@ export function activate(context: vscode.ExtensionContext) {
             issues.push(sampleIssue)
           }
 
+          // Modified section: Sequentially show notifications with await
           for (const issue of issues) {
             console.debug(
               `Notifying issue in ${issue.file}: ${issue.description}`
@@ -189,7 +190,7 @@ export function activate(context: vscode.ExtensionContext) {
             showDebugNotification(
               `Notifying issue in ${issue.file}: ${issue.description}`
             )
-            vscode.window
+            await vscode.window
               .showInformationMessage(
                 `Issue in ${issue.file}: ${issue.description}`,
                 "Tell Me More"
@@ -220,7 +221,7 @@ export function activate(context: vscode.ExtensionContext) {
             "Analysis was skipped (e.g., already in progress), but debug mode triggered this.",
           suggestion: "No action needed, this is a debug placeholder."
         }
-        vscode.window
+        await vscode.window
           .showInformationMessage(
             `Issue in ${sampleIssue.file}: ${sampleIssue.description}`,
             "Tell Me More"
