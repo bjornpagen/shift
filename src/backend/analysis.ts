@@ -36,7 +36,7 @@ Here is an example of the desired output format:
   }
 ]
 
-Respond with the JSON array only, without any additional text or explanations.`
+**CRITICAL**: Output ONLY the JSON array. Do NOT include ANY text, explanations, or formatting (e.g., code blocks) before or after. The response must be valid JSON, parseable without modification.`
 
 export async function analyze(userContent: string): Promise<Issue[]> {
   const responseContent = await apiAnalyzeCodebase(
