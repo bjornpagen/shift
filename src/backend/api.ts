@@ -12,8 +12,12 @@ export async function analyzeCodebase(
   }
   const anthropic = new Anthropic({ apiKey: apiKey as string })
   const response = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20240620",
-    max_tokens: 1024,
+    model: "claude-3-7-sonnet-latest", // NOTE: never change this model
+    max_tokens: 20000,
+    thinking: {
+      type: "enabled",
+      budget_tokens: 16000
+    },
     system: [
       {
         type: "text",
