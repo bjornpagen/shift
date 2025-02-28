@@ -15,7 +15,7 @@ let isAnalyzing = false
 // Helper to show debug notifications if debug mode is enabled
 function showDebugNotification(message: string) {
   const config = vscode.workspace.getConfiguration("shift-v2")
-  const debugMode = config.get("debugMode", false) // Changed default to false
+  const debugMode = config.get("debugMode", true) // Restored default to true
   if (debugMode) {
     vscode.window.showInformationMessage(`[DEBUG] ${message}`)
   }
@@ -37,7 +37,7 @@ async function getGitignorePatterns(): Promise<IgnoreInstance> {
   return ig
 }
 
-// Check if a file should be ignored
+// Check if a file should be ignored based on .gitignore patterns
 async function isFileIgnored(
   filePath: string,
   ig: IgnoreInstance
@@ -51,7 +51,9 @@ export function activate(context: vscode.ExtensionContext) {
     !vscode.workspace.workspaceFolders ||
     vscode.workspace.workspaceFolders.length === 0
   ) {
-    console.debug("No workspace open, delaying activation")
+    console.debug(
+      "No workspace open, delaying activation until a workspace is loaded"
+    )
     showDebugNotification("No workspace open, delaying activation")
     return
   }
@@ -76,6 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
         "**/*.{ts,js,tsx,jsx}",
         "**/node_modules/**"
       )
+      console.debug(`Found ${files.length} files before filtering`)
       let filteredFiles = files
       if (gitignore) {
         filteredFiles = await Promise.all(
@@ -87,10 +90,16 @@ export function activate(context: vscode.ExtensionContext) {
           results.filter((file): file is vscode.Uri => file !== null)
         )
       }
+      console.debug(
+        `Filtered to ${filteredFiles.length} files after .gitignore`
+      )
       for (const file of filteredFiles) {
         const content = await vscode.workspace.fs.readFile(file)
-        codebaseCache.set(file.fsPath, new TextDecoder().decode(content))
+        const decodedContent = new TextDecoder().decode(content)
+        codebaseCache.set(file.fsPath, decodedContent)
         progress.report({ increment: 100 / filteredFiles.length })
+        console.debug(`Cached file: ${file.fsPath}`)
+        showDebugNotification(`Cached file: ${file.fsPath}`)
       }
       showDebugNotification("Codebase cache load completed")
     }
@@ -103,11 +112,21 @@ export function activate(context: vscode.ExtensionContext) {
     if (gitignore && (await isFileIgnored(uri.fsPath, gitignore))) {
       return
     }
+    console.debug(`File created: ${uri.fsPath}`)
+    showDebugNotification(`File created: ${uri.fsPath}`)
     const content = await vscode.workspace.fs.readFile(uri)
     codebaseCache.set(uri.fsPath, new TextDecoder().decode(content))
+    console.debug(`Cached new file: ${uri.fsPath}`)
+    showDebugNotification(`Cached new file: ${uri.fsPath}`)
   })
   fileWatcher.onDidDelete((uri) => {
+    if (gitignore && codebaseCache.has(uri.fsPath)) {
+      console.debug(`File deleted: ${uri.fsPath}`)
+      showDebugNotification(`File deleted: ${uri.fsPath}`)
+    }
     codebaseCache.delete(uri.fsPath)
+    console.debug(`Removed from cache: ${uri.fsPath}`)
+    showDebugNotification(`Removed from cache: ${uri.fsPath}`)
   })
   fileWatcher.onDidChange(async (uri) => {
     if (gitignore && (await isFileIgnored(uri.fsPath, gitignore))) {
@@ -115,8 +134,12 @@ export function activate(context: vscode.ExtensionContext) {
     }
     const openDocs = vscode.workspace.textDocuments.map((doc) => doc.fileName)
     if (!openDocs.includes(uri.fsPath)) {
+      console.debug(`File changed externally: ${uri.fsPath}`)
+      showDebugNotification(`File changed externally: ${uri.fsPath}`)
       const content = await vscode.workspace.fs.readFile(uri)
       codebaseCache.set(uri.fsPath, new TextDecoder().decode(content))
+      console.debug(`Updated cache for: ${uri.fsPath}`)
+      showDebugNotification(`Updated cache for: ${uri.fsPath}`)
     }
   })
 
@@ -125,20 +148,47 @@ export function activate(context: vscode.ExtensionContext) {
       if (gitignore && (await isFileIgnored(document.fileName, gitignore))) {
         return
       }
+      console.debug(`File saved: ${document.fileName}`)
+      showDebugNotification(`File saved: ${document.fileName}`)
       codebaseCache.set(document.fileName, document.getText())
+      console.debug(`Cache updated for: ${document.fileName}`)
+      showDebugNotification(`Cache updated for: ${document.fileName}`)
+
+      const config = vscode.workspace.getConfiguration("shift-v2")
+      const debugMode = config.get("debugMode", true)
 
       if (!isAnalyzing) {
         isAnalyzing = true
+        console.debug("Starting codebase analysis")
+        showDebugNotification("Starting codebase analysis")
         try {
           const issues = await analyzeCodebase()
-          if (issues.length === 0) {
-            vscode.window.showInformationMessage(
-              "No architectural issues found."
+          console.debug(`Found ${issues.length} issues`)
+          showDebugNotification(`Found ${issues.length} issues`)
+
+          if (issues.length === 0 && debugMode) {
+            console.debug("No issues found, injecting sample debug issue")
+            showDebugNotification(
+              "No issues found, injecting sample debug issue"
             )
-            return
+            const sampleIssue: Issue = {
+              file: document.fileName,
+              location: "Line 1",
+              description: "Debug mode sample issue",
+              explanation:
+                "This is a test issue to ensure notifications work in debug mode.",
+              suggestion: "No action needed, this is a debug placeholder."
+            }
+            issues.push(sampleIssue)
           }
 
           for (const issue of issues) {
+            console.debug(
+              `Notifying issue in ${issue.file}: ${issue.description}`
+            )
+            showDebugNotification(
+              `Notifying issue in ${issue.file}: ${issue.description}`
+            )
             vscode.window
               .showInformationMessage(
                 `Issue in ${issue.file}: ${issue.description}`,
@@ -146,18 +196,56 @@ export function activate(context: vscode.ExtensionContext) {
               )
               .then((selection) => {
                 if (selection === "Tell Me More") {
+                  console.debug(`Showing details for issue in ${issue.file}`)
+                  showDebugNotification(
+                    `Showing details for issue in ${issue.file}`
+                  )
                   showIssueDetails(issue)
                 }
               })
           }
         } finally {
           isAnalyzing = false
+          console.debug("Codebase analysis completed")
+          showDebugNotification("Codebase analysis completed")
         }
+      } else if (debugMode) {
+        console.debug("Analysis skipped, showing sample debug issue")
+        showDebugNotification("Analysis skipped, showing sample debug issue")
+        const sampleIssue: Issue = {
+          file: document.fileName,
+          location: "Line 1",
+          description: "Debug mode sample issue (analysis skipped)",
+          explanation:
+            "Analysis was skipped (e.g., already in progress), but debug mode triggered this.",
+          suggestion: "No action needed, this is a debug placeholder."
+        }
+        vscode.window
+          .showInformationMessage(
+            `Issue in ${sampleIssue.file}: ${sampleIssue.description}`,
+            "Tell Me More"
+          )
+          .then((selection) => {
+            if (selection === "Tell Me More") {
+              console.debug(
+                `Showing details for sample debug issue in ${sampleIssue.file}`
+              )
+              showDebugNotification(
+                `Showing details for sample debug issue in ${sampleIssue.file}`
+              )
+              showIssueDetails(sampleIssue)
+            }
+          })
+      } else {
+        console.debug("Skipping analysis - already in progress")
+        showDebugNotification("Skipping analysis - already in progress")
       }
     }
   )
 
   context.subscriptions.push(fileWatcher, saveListener)
+  console.debug("File watcher and save listener registered")
+  showDebugNotification("File watcher and save listener registered")
 }
 
 interface Issue {
@@ -172,16 +260,24 @@ async function analyzeCodebase(): Promise<Issue[]> {
   const config = vscode.workspace.getConfiguration("shift-v2")
   const apiKey = config.get("openaiApiKey")
   if (!apiKey) {
+    console.debug("No OpenAI API key found")
+    showDebugNotification("No OpenAI API key found")
     vscode.window.showErrorMessage(
-      "OpenAI API key is not set. Please configure it in settings."
+      "OpenAI API key is not set. Please set it in the extension settings."
     )
     return []
   }
 
+  console.debug("Initializing OpenAI client")
+  showDebugNotification("Initializing OpenAI client")
   const openai = new OpenAI({ apiKey: apiKey as string })
   const prompt = preparePrompt(codebaseCache)
+  console.debug("Prepared prompt for analysis")
+  showDebugNotification("Prepared prompt for analysis")
 
   try {
+    console.debug("Sending request to OpenAI API")
+    showDebugNotification("Sending request to OpenAI API")
     const completion = await openai.chat.completions.create({
       model: "o3-mini",
       messages: [{ role: "user", content: prompt }],
@@ -189,19 +285,29 @@ async function analyzeCodebase(): Promise<Issue[]> {
     })
     const responseContent = completion.choices[0].message.content
     if (!responseContent) {
+      console.error("No content received from OpenAI")
+      showDebugNotification("No content received from OpenAI")
       return []
     }
-    return JSON.parse(responseContent).issues || []
+    console.debug("Received response from OpenAI")
+    showDebugNotification("Received response from OpenAI")
+    const jsonResponse = JSON.parse(responseContent)
+    console.debug("Parsed JSON response")
+    showDebugNotification("Parsed JSON response")
+    return jsonResponse.issues || []
   } catch (error) {
     console.error("Error during OpenAI API call:", error)
+    showDebugNotification(`Error during OpenAI API call: ${error}`)
     vscode.window.showErrorMessage(
-      "Failed to analyze codebase. Check console for details."
+      "Failed to analyze codebase. See console for details."
     )
     return []
   }
 }
 
 function preparePrompt(cache: Map<string, string>): string {
+  console.debug("Preparing prompt from cache")
+  showDebugNotification("Preparing prompt from cache")
   let prompt = "# Codebase\n\n"
   for (const [filePath, content] of cache) {
     prompt += `## File: ${filePath}\n\n\`\`\`typescript\n${content}\n\`\`\`\n\n`
@@ -226,10 +332,14 @@ Return the response in JSON format with the following structure:
   ]
 }
 `
+  console.debug("Prompt preparation completed")
+  showDebugNotification("Prompt preparation completed")
   return prompt
 }
 
 function showIssueDetails(issue: Issue) {
+  console.debug("Creating webview panel for issue details")
+  showDebugNotification("Creating webview panel for issue details")
   const panel = vscode.window.createWebviewPanel(
     "shiftV2IssueDetails",
     `Issue in ${issue.file}`,
@@ -237,13 +347,19 @@ function showIssueDetails(issue: Issue) {
     { enableScripts: true }
   )
   panel.webview.html = getIssueDetailsHtml(issue)
+  console.debug("Webview panel created")
+  showDebugNotification("Webview panel created")
 
   panel.webview.onDidReceiveMessage((message) => {
     if (message.command === "clarify") {
+      console.debug("Received clarify request from webview")
+      showDebugNotification("Received clarify request from webview")
       vscode.window
         .showInputBox({ prompt: "Ask your question about this issue" })
         .then((question) => {
           if (question) {
+            console.debug(`User asked: ${question}`)
+            showDebugNotification(`User asked: ${question}`)
             const followUpPrompt = `
 Regarding the following issue:
 File: ${issue.file}
@@ -258,9 +374,13 @@ Please provide a detailed response.
               .getConfiguration("shift-v2")
               .get("openaiApiKey")
             if (!apiKey) {
+              console.debug("No OpenAI API key for clarification")
+              showDebugNotification("No OpenAI API key for clarification")
               vscode.window.showErrorMessage("OpenAI API key is not set.")
               return
             }
+            console.debug("Sending clarification request to OpenAI")
+            showDebugNotification("Sending clarification request to OpenAI")
             const openai = new OpenAI({ apiKey: apiKey as string })
             openai.chat.completions
               .create({
@@ -269,6 +389,8 @@ Please provide a detailed response.
               })
               .then((completion) => {
                 const response = completion.choices[0].message.content
+                console.debug("Received clarification response")
+                showDebugNotification("Received clarification response")
                 panel.webview.postMessage({
                   command: "showResponse",
                   text: response
@@ -276,8 +398,9 @@ Please provide a detailed response.
               })
               .catch((error) => {
                 console.error("Error during clarification:", error)
+                showDebugNotification(`Error during clarification: ${error}`)
                 vscode.window.showErrorMessage(
-                  "Failed to get clarification. See console."
+                  "Failed to get clarification. See console for details."
                 )
               })
           }
@@ -287,6 +410,8 @@ Please provide a detailed response.
 }
 
 function getIssueDetailsHtml(issue: Issue): string {
+  console.debug("Generating HTML for issue details")
+  showDebugNotification("Generating HTML for issue details")
   return `
 <!DOCTYPE html>
 <html lang="en">
