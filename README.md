@@ -1,71 +1,57 @@
-# shift-v2 README
+# Shift-V2: Real-Time Architectural Guidance Extension
 
-This is the README for your extension "shift-v2". After writing up a brief description, we recommend including the following sections.
+Shift-V2 is a VS Code/Cursor extension that provides real-time, proactive guidance on architectural best practices. Unlike linters or reactive AI tools, Shift-V2 focuses on the big picture—analyzing your entire codebase to spot high-level design issues like N+1 queries or inefficient component usage. It delivers clear, actionable tips without you needing to ask.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+- **Whole-Codebase Analysis:** Monitors your project and identifies architectural inefficiencies using OpenAI's O3-Mini model.
+- **Automatic Tips:** Get alerts like "This might slow your database queries" as you save files.
+- **Tailored Fixes:** Suggestions like "Fetch this data in one batch" that fit your code.
+- **Clear Explanations:** Understand why it matters, e.g., "Multiple queries here can bottleneck your app."
+- **Ask Questions:** Hit "Clarify" to dig deeper into any tip.
 
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+![Notification Example](images/notification-example.png)
+*Example: A notification with a detected issue and option to see details.*
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- **VS Code:** Version 1.96.0 or higher.
+- **OpenAI API Key:** Required for the O3-Mini model. Get one from [OpenAI](https://platform.openai.com/).
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+Shift-V2 adds the following setting:
 
-For example:
+- `shift-v2.openaiApiKey`: Your OpenAI API key for accessing the O3-Mini model. Set it in VS Code Settings.
 
-This extension contributes the following settings:
+### How to Set Up
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+1. Install the extension via the VS Code Marketplace (once published) or by sideloading the `.vsix` file.
+2. Open VS Code Settings (`Ctrl+,` or `Cmd+,` on Mac).
+3. Search for `shift-v2.openaiApiKey` and paste your OpenAI API key.
+4. Start coding—Shift-V2 will analyze your codebase on file saves.
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+- Large codebases (>200k tokens) may exceed the O3-Mini context limit; future versions will address this.
+- Initial cache loading might take a few seconds on big projects.
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+- Initial release with core architectural analysis for database queries and component misuse.
+- Proactive notifications and clarification feature included.
 
 ---
 
-## Following extension guidelines
+## Following Extension Guidelines
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+This extension adheres to [VS Code Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines).
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+## For More Information
 
-## Working with Markdown
+- [VS Code Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
+- [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+**Enjoy better architecture with Shift-V2!**

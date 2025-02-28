@@ -15,7 +15,18 @@
         "command": "shift-v2.helloWorld",
         "title": "Hello World"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Shift-V2 Settings",
+      "properties": {
+        "shift-v2.openaiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API Key for O3-Mini model"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "bun run compile",
@@ -34,5 +45,8 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "openai": "^4.86.1"
   }
 }
