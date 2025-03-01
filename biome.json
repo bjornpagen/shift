@@ -20,6 +20,12 @@
   "linter": {
     "enabled": true,
     "rules": {
+      "complexity": {
+        "useOptionalChain": {
+          "level": "error",
+          "fix": "safe"
+        }
+      },
       "suspicious": {
         "noConsole": "warn"
       },

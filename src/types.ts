@@ -6,3 +6,10 @@ export interface Issue {
   suggestion: string
   reasoning: string
 }
+
+export interface KuzuIssue {
+  type: string
+  from?: string
+  to?: string
+  description: string
+}

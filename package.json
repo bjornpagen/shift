@@ -1,5 +1,5 @@
 {
-"name": "shiftv2",
+  "name": "shiftv2",
   "displayName": "ShiftV2: Real-Time Architectural Guidance",
   "description": "Provides real-time architectural guidance by analyzing your codebase for design inefficiencies.",
   "version": "0.0.1",
@@ -31,7 +31,17 @@
           "description": "OpenAI API Key for O3-Mini model"
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "shift-v2.initialLoad",
+        "title": "Shift-V2: Initial Load Workspace"
+      },
+      {
+        "command": "shift-v2.analyze",
+        "title": "Shift-V2: Analyze Workspace"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "bun run compile",
@@ -42,17 +52,19 @@
     "format": "biome format --write .",
     "lint": "biome lint --write ."
   },
+  "trustedDependencies": ["kuzu", "@biomejs/biome"],
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
     "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
-    "@types/vscode": "^1.96.0",
+    "@types/vscode": "^1.97.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
-    "typescript": "^5.7.3"
+    "typescript": "^5.8.2"
   },
   "dependencies": {
     "ignore": "^7.0.3",
-    "openai": "^4.86.1"
+    "kuzu": "^0.8.2",
+    "openai": "^4.86.1",
+    "zod": "^3.24.2"
   }
 }

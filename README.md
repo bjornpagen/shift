@@ -4,7 +4,7 @@ Shift-V2 is a VS Code/Cursor extension that provides real-time, proactive guidan
 
 ## Features
 
-- **Whole-Codebase Analysis:** Monitors your project and identifies architectural inefficiencies using OpenAI's O3-Mini model.
+- **Whole-Codebase Analysis:** Monitors your project and identifies architectural inefficiencies using OpenAI's O3-Mini model and a graph database for precise context.
 - **Automatic Tips:** Get alerts like "This might slow your database queries" as you save files.
 - **Tailored Fixes:** Suggestions like "Fetch this data in one batch" that fit your code.
 - **Clear Explanations:** Understand why it matters, e.g., "Multiple queries here can bottleneck your app."
@@ -26,32 +26,27 @@ Shift-V2 adds the following setting:
 
 ### How to Set Up
 
-1. Install the extension via the VS Code Marketplace (once published) or by sideloading the `.vsix` file.
-2. Open VS Code Settings (`Ctrl+,` or `Cmd+,` on Mac).
-3. Search for `shift-v2.openaiApiKey` and paste your OpenAI API key.
-4. Start coding—Shift-V2 will analyze your codebase on file saves.
+1. **Install the Extension:** Install Shift-V2 from the VS Code Marketplace or sideload the `.vsix` file.
+2. **Set API Key:**
+   - Open VS Code Settings (`Ctrl+,` or `Cmd+,` on Mac).
+   - Search for `shift-v2.openaiApiKey`.
+   - Enter your OpenAI API key.
+3. **Ensure Kùzu Integration:** The extension uses a Kùzu graph database for enhanced analysis. No additional setup is required if installed via the official release.
 
-## Known Issues
+### How to Use
 
-- Large codebases (>200k tokens) may exceed the O3-Mini context limit; future versions will address this.
-- Initial cache loading might take a few seconds on big projects.
+1. **Start Coding:** Open your project in VS Code. Shift-V2 automatically analyzes your codebase as you save files, leveraging the Kùzu database to examine code constructs (e.g., functions, classes) and their relationships (e.g., calls, data usage).
+2. **View Notifications:** When an architectural issue is detected, a notification appears with a brief description (e.g., "N+1 query detected"). Click "See Details" for the full explanation and fix.
+3. **Act on Suggestions:** Apply the suggested fix or click "Clarify" to ask the AI for more details.
 
-## Release Notes
+#### Example
+Suppose you write a function that fetches user data in a loop:
 
-### 0.0.1
-
-- Initial release with core architectural analysis for database queries and component misuse.
-- Proactive notifications and clarification feature included.
-
----
-
-## Following Extension Guidelines
-
-This extension adheres to [VS Code Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines).
-
-## For More Information
-
-- [VS Code Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-- [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy better architecture with Shift-V2!**
+```javascript
+1: async function getUserPosts(users) {
+2:   const posts = [];
+3:   for (const user of users) {
+4:     posts.push(await db.query("SELECT * FROM posts WHERE user_id = ?", user.id));
+5:   }
+6:   return posts;
+7: }
