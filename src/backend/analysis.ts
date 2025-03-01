@@ -3,6 +3,7 @@ import * as vscode from "vscode"
 import { zodResponseFormat } from "openai/helpers/zod"
 import { z } from "zod"
 import type { Issue, KuzuIssue } from "../types"
+import { tryCatch } from "../utils/try-catch"
 
 const IssueSchema = z.object({
   file: z.string(),
@@ -174,5 +175,3 @@ function sleep(ms: number): Promise<void> {
 type ErrorConstructor = {
   new (...args: unknown[]): Error
 }
-
-import { tryCatch } from "../utils/try-catch"
