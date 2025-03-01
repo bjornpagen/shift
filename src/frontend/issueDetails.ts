@@ -48,6 +48,7 @@ export function showIssueDetails(issue: Issue) {
       const content = codebaseCache.get(absPath)
       if (content) {
         const lines = content.split("\n")
+        // Keep original indentation by not trimming the lines
         const snippetLines = lines
           .slice(lineRange.start - 1, lineRange.end)
           .map((line, index) => `${lineRange.start + index}: ${line}`)
@@ -105,6 +106,303 @@ export function showIssueDetails(issue: Issue) {
   })
 }
 
+function getStyles(): string {
+  return `
+    body {
+      font-family: var(--vscode-font-family);
+      color: var(--vscode-editor-foreground);
+      background-color: var(--vscode-editor-background);
+      padding: 24px;
+      line-height: 1.5;
+      margin: 0;
+    }
+    
+    h1, h2 {
+      color: var(--vscode-editor-foreground);
+      font-weight: 600;
+      margin: 0;
+    }
+    
+    h1 {
+      font-size: 1.4em;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--vscode-editorGroup-border);
+    }
+    
+    h2 {
+      font-size: 1.1em;
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+    
+    .issue-details {
+      background: var(--vscode-editor-background);
+      border-radius: 6px;
+      margin-bottom: 24px;
+    }
+    
+    .detail-item {
+      display: flex;
+      margin-bottom: 16px;
+      align-items: flex-start;
+    }
+    
+    .label {
+      flex: 0 0 100px;
+      font-weight: 600;
+      color: var(--vscode-descriptionForeground);
+      padding-right: 16px;
+    }
+    
+    .value {
+      flex: 1;
+      line-height: 1.6;
+    }
+    
+    .code-snippet {
+      margin: 24px 0;
+      background: var(--vscode-editorWidget-background);
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    .code-snippet-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--vscode-editorWidget-background);
+      border-bottom: 1px solid var(--vscode-editorGroup-border);
+    }
+    
+    .code-box {
+      background-color: var(--vscode-editorWidget-background);
+      padding: 12px;
+      overflow: auto;
+      font-family: var(--vscode-editor-font-family);
+      font-size: var(--vscode-editor-font-size);
+    }
+    
+    #code-block {
+      margin: 0;
+      padding: 0;
+      background-color: transparent;
+    }
+    
+    .code-line-wrapper {
+      display: flex;
+      align-items: flex-start;
+      min-height: 20px;
+      padding: 0 4px;
+    }
+    
+    .code-line-wrapper:hover {
+      background-color: var(--vscode-editor-hoverHighlightBackground);
+    }
+    
+    .line-number {
+      width: 40px;
+      padding-right: 12px;
+      text-align: right;
+      color: var(--vscode-editorLineNumber-foreground);
+      flex-shrink: 0;
+      user-select: none;
+      opacity: 0.5;
+    }
+    
+    .code-line {
+      flex: 1;
+      white-space: pre;
+      color: var(--vscode-editor-foreground);
+    }
+    
+    .actions {
+      margin-top: 24px;
+      display: flex;
+      gap: 8px;
+    }
+    
+    button {
+      background-color: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: var(--vscode-button-hoverBackground);
+    }
+    
+    button.secondary {
+      background-color: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+    }
+    
+    button.secondary:hover {
+      background-color: var(--vscode-button-secondaryHoverBackground);
+    }
+    
+    .copy-code {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      opacity: 0.7;
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+    
+    .copy-code:hover {
+      opacity: 1;
+    }
+    
+    #feedback {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--vscode-editorWidget-background);
+      color: var(--vscode-editorWidget-foreground);
+      padding: 8px 16px;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.2s ease;
+    }
+    
+    #feedback.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    
+    #reasoning {
+      background: var(--vscode-sideBar-background);
+      border-radius: 4px;
+      padding: 12px;
+      margin-top: 8px;
+    }
+  `
+}
+
+function getScripts(): string {
+  return `
+    const vscode = acquireVsCodeApi();
+    
+    function escapeHtml(text) {
+      var div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function showFeedback(text) {
+      const feedback = document.getElementById('feedback');
+      feedback.innerText = text;
+      feedback.classList.add('visible');
+      setTimeout(() => {
+        feedback.classList.remove('visible');
+        setTimeout(() => { feedback.innerText = ''; }, 200);
+      }, 2000);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Format code block with line numbers
+      const codeBlock = document.getElementById('code-block');
+      if (codeBlock) {
+        const lines = codeBlock.innerText.split('\\n');
+        codeBlock.innerHTML = lines
+          .map(line => {
+            const colonIndex = line.indexOf(':');
+            if (colonIndex === -1) return '';
+            const number = line.substring(0, colonIndex);
+            const code = line.substring(colonIndex + 1);
+            return \`<div class="code-line-wrapper">
+              <span class="line-number">\${escapeHtml(number.trim())}:</span>
+              <span class="code-line">\${escapeHtml(code)}</span>
+            </div>\`;
+          })
+          .join('');
+      }
+
+      // Show code container by default
+      const container = document.getElementById('code-snippet-container');
+      if (container) {
+        container.style.display = 'block';
+      }
+
+      // Setup reasoning toggle
+      const toggleButton = document.getElementById('toggle-reasoning');
+      if (toggleButton) {
+        toggleButton.addEventListener('click', () => {
+          const reasoningDiv = document.getElementById('reasoning');
+          if (reasoningDiv) {
+            const isHidden = reasoningDiv.style.display === 'none';
+            reasoningDiv.style.display = isHidden ? 'block' : 'none';
+            toggleButton.innerText = isHidden ? 'Hide Reasoning' : 'Show Reasoning';
+          }
+        });
+      }
+
+      // Add hover effect for code lines
+      document.querySelectorAll('.code-line-wrapper').forEach(wrapper => {
+        wrapper.addEventListener('mouseenter', () => {
+          wrapper.style.backgroundColor = 'var(--vscode-editor-hoverHighlightBackground)';
+        });
+        wrapper.addEventListener('mouseleave', () => {
+          wrapper.style.backgroundColor = '';
+        });
+      });
+    });
+
+    function openFile(file, startLine, endLine) {
+      vscode.postMessage({
+        command: 'openFile',
+        file,
+        startLine,
+        endLine
+      });
+    }
+
+    function copyToClipboard() {
+      vscode.postMessage({ command: 'copyToClipboard' });
+    }
+
+    function copyCode() {
+      const codeBlock = document.getElementById('code-block');
+      const lines = Array.from(codeBlock.getElementsByClassName('code-line'))
+        .map(span => span.innerText);
+      
+      navigator.clipboard.writeText(lines.join('\\n'))
+        .then(
+          () => showFeedback('Code copied to clipboard!'),
+          () => showFeedback('Failed to copy code.')
+        );
+    }
+
+    function toggleCode() {
+      const container = document.getElementById('code-snippet-container');
+      const button = document.querySelector('.code-snippet-header button');
+      const isHidden = container.style.display === 'none';
+      
+      container.style.display = isHidden ? 'block' : 'none';
+      button.innerText = isHidden ? 'Hide' : 'Show';
+    }
+
+    window.addEventListener('message', event => {
+      const message = event.data;
+      if (message.command === 'copySuccess' || message.command === 'copyError') {
+        showFeedback(message.text);
+      }
+    });
+  `;
+}
+
 function getIssueDetailsHtml(
   issue: Issue,
   codeSnippet: string,
@@ -112,171 +410,72 @@ function getIssueDetailsHtml(
   relativeFile: string
 ): string {
   const openButton = lineRange
-    ? `<button onclick="openFile('${issue.file}', ${lineRange.start}, ${lineRange.end})">Go to Code</button>`
+    ? `<button onclick="openFile('${issue.file}', ${lineRange.start}, ${lineRange.end})">
+        <span>Go to Code</span>
+       </button>`
     : ""
+
   const codeSection = codeSnippet
-    ? `
-    <div class="code-snippet">
-      <h2>Code Snippet <button onclick="toggleCode()">Hide</button></h2>
-      <div class="code-container" style="position: relative;">
-        <div id="code-snippet-container" class="code-box" style="max-height: 400px; overflow: auto;">
-          <pre id="code-block">${escapeHtml(codeSnippet)}</pre>
+    ? `<div class="code-snippet">
+        <div class="code-snippet-header">
+          <h2>Code Snippet</h2>
+          <button class="secondary" onclick="toggleCode()">Hide</button>
         </div>
-        <button class="copy-code" onclick="copyCode()" style="position: absolute; top: 5px; right: 5px; font-size: 0.8em; padding: 4px 8px;">Copy Code</button>
-      </div>
-    </div>
-    `
+        <div class="code-container" style="position: relative;">
+          <div id="code-snippet-container" class="code-box" style="max-height: 400px;">
+            <pre id="code-block">${escapeHtml(codeSnippet)}</pre>
+          </div>
+          <button class="copy-code secondary" onclick="copyCode()">Copy</button>
+        </div>
+      </div>`
     : ""
-  const reasoningSection = `
-    <div class="detail-item">
-      <button id="toggle-reasoning">Show Reasoning</button>
-      <div id="reasoning" style="display: none;">
-        <h2>Reasoning</h2>
-        <p>${escapeHtml(issue.reasoning)}</p>
+
+  const reasoningSection = `<div class="detail-item">
+      <div class="label">Reasoning</div>
+      <div class="value">
+        <button class="secondary" id="toggle-reasoning">Show Reasoning</button>
+        <div id="reasoning" style="display: none;">
+          <p>${escapeHtml(issue.reasoning)}</p>
+        </div>
       </div>
-    </div>
-  `
-  return `
-<!DOCTYPE html>
+    </div>`
+
+  return `<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Issue Details</title>
-  <style>
-    body { font-family: var(--vscode-font-family); color: var(--vscode-editor-foreground); background-color: var(--vscode-editor-background); padding: 20px; }
-    h1, h2 { color: var(--vscode-editor-foreground); font-weight: bold; }
-    h1 { font-size: 1.5em; margin-bottom: 20px; }
-    h2 { font-size: 1.2em; margin-top: 20px; }
-    .issue-details { margin-bottom: 20px; }
-    .detail-item { display: flex; margin-bottom: 10px; }
-    .label { flex: 0 0 120px; font-weight: bold; }
-    .value { flex: 1; }
-    .code-snippet h2 button { font-size: 0.8em; padding: 2px 6px; margin-left: 10px; }
-    .code-box { background-color: var(--vscode-sideBar-background, #2a2d2e); border: 1px solid var(--vscode-editorGroup-border, #3c3c3c); border-radius: 4px; padding: 10px; }
-    #code-block { margin: 0; padding: 0; background-color: transparent; }
-    .code-line-wrapper { display: flex; align-items: flex-start; }
-    .line-number { width: 40px; text-align: right; margin-right: 10px; color: var(--vscode-editorLineNumber-foreground); flex-shrink: 0; }
-    .code-line { flex: 1; white-space: pre; color: var(--vscode-editor-foreground); }
-    .actions { margin-top: 20px; }
-    button { background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 8px 16px; cursor: pointer; margin-right: 10px; }
-    button:hover { background-color: var(--vscode-button-hoverBackground); }
-    #feedback { margin-top: 10px; color: var(--vscode-descriptionForeground); }
-  </style>
-</head>
-<body>
-  <div class="issue-details">
-    <h1>Issue in ${relativeFile}</h1>
-    <div class="detail-item">
-      <span class="label">Location:</span>
-      <span class="value">${escapeHtml(relativeFile)}: ${escapeHtml(issue.location)}</span>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Issue Details</title>
+    <style>${getStyles()}</style>
+  </head>
+  <body>
+    <div class="issue-details">
+      <h1>Issue in ${relativeFile}</h1>
+      <div class="detail-item">
+        <div class="label">Location</div>
+        <div class="value">${escapeHtml(relativeFile)}: ${escapeHtml(issue.location)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Description</div>
+        <div class="value">${escapeHtml(issue.description)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Explanation</div>
+        <div class="value">${escapeHtml(issue.explanation)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Suggestion</div>
+        <div class="value">${escapeHtml(issue.suggestion)}</div>
+      </div>
+      ${reasoningSection}
     </div>
-    <div class="detail-item">
-      <span class="label">Description:</span>
-      <span class="value">${escapeHtml(issue.description)}</span>
+    ${codeSection}
+    <div class="actions">
+      ${openButton}
+      <button class="secondary" onclick="copyToClipboard()">Copy Issue Details</button>
     </div>
-    <div class="detail-item">
-      <span class="label">Explanation:</span>
-      <span class="value">${escapeHtml(issue.explanation)}</span>
-    </div>
-    <div class="detail-item">
-      <span class="label">Suggestion:</span>
-      <span class="value">${escapeHtml(issue.suggestion)}</span>
-    </div>
-    ${reasoningSection}
-  </div>
-  ${codeSection}
-  <div class="actions">
-    ${openButton}
-    <button onclick="copyToClipboard()">Copy Issue Details</button>
-  </div>
-  <div id="feedback"></div>
-  <script>
-    const vscode = acquireVsCodeApi();
-    function escapeHtml(text) {
-      var div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
-    document.addEventListener('DOMContentLoaded', () => {
-      vscode.postMessage({ command: 'debug', text: 'DOM loaded' });
-      const codeBlock = document.getElementById('code-block');
-      if (codeBlock) {
-        const lines = codeBlock.innerText.split('\\n');
-        codeBlock.innerHTML = lines.map(line => {
-          const [number, ...code] = line.split(':');
-          const codeText = code.join(':').trim();
-          return \`<div class="code-line-wrapper"><span class="line-number">\${escapeHtml(number.trim())}:</span><span class="code-line">\${escapeHtml(codeText)}</span></div>\`;
-        }).join('');
-      }
-      const container = document.getElementById('code-snippet-container');
-      if (container) {
-        container.style.display = 'block';
-      }
-      const toggleButton = document.getElementById('toggle-reasoning');
-      if (toggleButton) {
-        toggleButton.addEventListener('click', () => {
-          vscode.postMessage({ command: 'debug', text: 'Toggle clicked' });
-          const reasoningDiv = document.getElementById('reasoning');
-          if (reasoningDiv) {
-            if (reasoningDiv.style.display === 'none') {
-              reasoningDiv.style.display = 'block';
-              toggleButton.innerText = 'Hide Reasoning';
-              vscode.postMessage({ command: 'debug', text: 'Set display to block' });
-            } else {
-              reasoningDiv.style.display = 'none';
-              toggleButton.innerText = 'Show Reasoning';
-              vscode.postMessage({ command: 'debug', text: 'Set display to none' });
-            }
-          } else {
-            vscode.postMessage({ command: 'debug', text: 'reasoning div not found' });
-          }
-        });
-      } else {
-        vscode.postMessage({ command: 'debug', text: 'toggle-reasoning button not found' });
-      }
-    });
-    function openFile(file, startLine, endLine) {
-      vscode.postMessage({ command: 'openFile', file: file, startLine: startLine, endLine: endLine });
-    }
-    function copyToClipboard() {
-      vscode.postMessage({ command: 'copyToClipboard' });
-    }
-    function copyCode() {
-      const codeBlock = document.getElementById('code-block');
-      const lines = Array.from(codeBlock.getElementsByClassName('code-line')).map(span => span.innerText);
-      const codeWithoutNumbers = lines.join('\\n');
-      navigator.clipboard.writeText(codeWithoutNumbers).then(() => {
-        const feedback = document.getElementById('feedback');
-        feedback.innerText = 'Code copied to clipboard!';
-        setTimeout(() => { feedback.innerText = ''; }, 3000);
-      }, (err) => {
-        console.error('Failed to copy code:', err);
-        const feedback = document.getElementById('feedback');
-        feedback.innerText = 'Failed to copy code.';
-      });
-    }
-    function toggleCode() {
-      const container = document.getElementById('code-snippet-container');
-      const button = document.querySelector('.code-snippet h2 button');
-      if (container.style.display === 'none') {
-        container.style.display = 'block';
-        button.innerText = 'Hide';
-      } else {
-        container.style.display = 'none';
-        button.innerText = 'Show';
-      }
-    }
-    window.addEventListener('message', event => {
-      const message = event.data;
-      if (message.command === 'copySuccess' || message.command === 'copyError') {
-        const feedback = document.getElementById('feedback');
-        feedback.innerText = message.text;
-        setTimeout(() => { feedback.innerText = ''; }, 3000);
-      }
-    });
-  </script>
-</body>
-</html>
-`
+    <div id="feedback"></div>
+    <script>${getScripts()}</script>
+  </body>
+</html>`
 }

@@ -16,6 +16,8 @@ const previousCodebaseCache: Map<string, string> = new Map();
 let isAnalyzing = false;
 let hasSentInitialCodebase = false;
 let currentIssues: Issue[] = [];
+// Track which issues have been notified to avoid duplicates
+const notifiedIssues = new Set<string>();
 
 // Parse .gitignore files and return an ignore instance
 async function getGitignorePatterns(): Promise<IgnoreInstance> {
