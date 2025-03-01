@@ -1,8 +1,14 @@
 {
-  "name": "shift-v2",
-  "displayName": "shift-v2",
-  "description": "Slop fixer",
+"name": "shiftv2",
+  "displayName": "ShiftV2: Real-Time Architectural Guidance",
+  "description": "Provides real-time architectural guidance by analyzing your codebase for design inefficiencies.",
   "version": "0.0.1",
+  "publisher": "shiftv2dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bjornpagen/shift"
+  },
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -40,7 +46,7 @@
     "@biomejs/biome": "1.9.4",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
-    "@types/vscode": "^1.97.0",
+    "@types/vscode": "^1.96.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "typescript": "^5.7.3"
