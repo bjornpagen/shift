@@ -103,7 +103,6 @@ async function analyzeCodebaseInternal(
   const openai = new OpenAI({ apiKey: apiKey as string })
 
   const apiCall = async () => {
-    vscode.window.setStatusBarMessage("Analyzing code...", 5000)
     const completion = await openai.beta.chat.completions.parse({
       model: "o3-mini",
       messages: [
@@ -139,12 +138,10 @@ export async function analyze(
     const issuesContext = JSON.stringify(kuzuIssues, null, 2)
     const fullUserContent = `${userContent}\n\n## Additional Context\n### Graph Issues:\n${issuesContext}`
 
-    vscode.window.setStatusBarMessage("Analyzing file...", 30000)
     const response = await analyzeCodebaseInternal(
       analysisInstructions,
       fullUserContent
     )
-    vscode.window.setStatusBarMessage("Analysis complete", 3000)
 
     if (!response || !response.issues) {
       console.error("Invalid response from API:", response)
@@ -170,7 +167,6 @@ export async function getClarification(prompt: string): Promise<string> {
   const openai = new OpenAI({ apiKey: apiKey as string })
 
   const apiCall = async () => {
-    vscode.window.setStatusBarMessage("Getting clarification...", 5000)
     const completion = await openai.beta.chat.completions.parse({
       model: "o3-mini",
       messages: [{ role: "user", content: prompt }],

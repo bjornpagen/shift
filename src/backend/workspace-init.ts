@@ -61,10 +61,7 @@ export async function initialLoad(conn: KuzuConnection, ig: Ignore) {
   const count = Number(filesResultData.data[0].count)
   console.debug(`Database contains ${count} files`)
   if (count > 0) {
-    console.debug("Database already populated, skipping initial load")
-    vscode.window.showInformationMessage(
-      "Database already populated. Skipping initial load."
-    )
+    console.debug("Database already populated. Skipping initial load.")
     return
   }
 

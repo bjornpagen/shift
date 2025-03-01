@@ -175,6 +175,7 @@ async function handleDocumentUpdate(
     if (!isAnalyzing) {
       isAnalyzing = true
       console.debug("Starting file analysis")
+      const status = vscode.window.setStatusBarMessage("Analyzing file...")
       try {
         // Prepare content for analysis
         const lines = newContent.split("\n")
@@ -213,6 +214,7 @@ async function handleDocumentUpdate(
       } catch (error) {
         console.error("Error in file analysis:", error)
       } finally {
+        status.dispose()
         isAnalyzing = false
         console.debug("File analysis completed")
       }
@@ -229,11 +231,11 @@ async function handleDocumentUpdate(
 // Function to escape HTML characters
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
+    .replace(/&/g, "&")
+    .replace(/</g, "<")
+    .replace(/>/g, ">")
+    .replace(/"/g, '"')
+    .replace(/'/g, "'")
 }
 
 // New function to display all issues in a webview
