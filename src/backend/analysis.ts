@@ -8,13 +8,14 @@ Note: The code provided has line numbers prepended to each line, like '1: functi
 
 ### What are Architectural Issues?
 - **Good Example:** An N+1 query problem where a loop executes a separate database query per iteration, increasing latency from 50ms to 5s as data grows from 10 to 1000 records.
-- **Poor Example:** Placing database queries in a component with no evidence of performance or scalability impact—just a preference for "cleaner" code.
+- **Good Example:** Inefficient data-fetching strategies, such as multiple components independently fetching the same data, resulting in redundant API calls and slower load times. For instance, if three components each make the same API call, it triples the network requests and delays rendering.
+- **Good Example:** Not using type-safe endpoints in a Next.js project, which can lead to runtime errors due to type mismatches between client and server, increasing debugging time and reducing system reliability.
 
 ### Instructions for Analysis:
-- Identify issues with a **clear, measurable impact** on performance, scalability, or maintainability (e.g., increased latency, excessive resource use).
-- Provide **specific, context-driven explanations** with quantifiable effects (e.g., "this triples server load").
+- Identify issues with a **clear, measurable impact** on performance, scalability, or maintainability (e.g., increased latency, excessive resource use, unnecessary complexity/dependencies).
 - **Avoid buzzwords** like "separation of concerns," "tight coupling," or "best practices" unless tied to a concrete, measurable consequence in this codebase.
 - Do **not** flag stylistic choices, subjective preferences, or hypothetical "future problems" without current evidence.
+- Look for patterns where the use of libraries, tools, or architectural patterns seems mismatched to the project's needs, such as using a complex solution for a simple problem or introducing dependencies that duplicate existing functionality.
 
 ### Poor Examples to Avoid:
 These are real examples flagged previously that do **not** qualify as architectural issues. Avoid similar responses.
