@@ -1,7 +1,8 @@
 import { analyzeCodebase as apiAnalyzeCodebase } from "./api"
+import { trySync } from "../utils/try-catch"
 import type { Issue } from "../types"
 
-const analysisInstructions = `You are an AI assistant tasked with analyzing codebases for **architectural issues**. Architectural issues are problems that significantly impact the system's performance, scalability, maintainability, or other key qualities. They are **not** stylistic preferences, syntax errors, linter warnings, orminor programming mistakes.
+const analysisInstructions = `You are an AI assistant tasked with analyzing codebases for **architectural issues**. Architectural issues are problems that significantly impact the system's performance, scalability, maintainability, or other key qualities. They are **not** stylistic preferences, syntax errors, linter warnings, or minor programming mistakes.
 
 Note: The code provided has line numbers prepended to each line, like '1: function foo() {'.
 
@@ -44,6 +45,7 @@ These are real examples flagged previously that do **not** qualify as architectu
   - "explanation": detailed, measurable impact (3-5 sentences).
   - "suggestion": specific fix with brief justification.
 - Ensure JSON is valid (no unescaped quotes).
+- **Important:** Always return a JSON array, even if there is only one issue. For example, if there is only one issue, the output should be [{ ... }] instead of { ... }.
 
 **Example Output:**
 [
@@ -67,22 +69,37 @@ export async function analyze(userContent: string): Promise<Issue[]> {
   if (!responseContent) {
     return []
   }
-  try {
-    const issues = JSON.parse(responseContent)
-    if (!Array.isArray(issues)) {
-      console.error("Response is not an array:", responseContent)
-      return []
-    }
-    return issues.map((issue) => ({
-      file: issue.file,
-      location: issue.location,
-      description: issue.description,
-      explanation: issue.explanation,
-      suggestion: issue.suggestion
-    }))
-  } catch (error) {
-    console.error("Failed to parse JSON response:", error)
+  const parseResult = trySync(() => JSON.parse(responseContent))
+  if (parseResult.error) {
+    console.error("Failed to parse JSON response:", parseResult.error)
     console.error("Response content:", responseContent)
     return []
   }
+  let issues = parseResult.data
+  if (!Array.isArray(issues)) {
+    if (
+      typeof issues === "object" &&
+      issues !== null &&
+      "file" in issues &&
+      "location" in issues &&
+      "description" in issues &&
+      "explanation" in issues &&
+      "suggestion" in issues
+    ) {
+      issues = [issues] // Wrap single object in an array
+    } else {
+      console.error(
+        "Response is not an array or a valid issue object:",
+        responseContent
+      )
+      return []
+    }
+  }
+  return issues.map((issue: Issue) => ({
+    file: issue.file,
+    location: issue.location,
+    description: issue.description,
+    explanation: issue.explanation,
+    suggestion: issue.suggestion
+  }))
 }

@@ -19,10 +19,10 @@
       "type": "object",
       "title": "Shift-V2 Settings",
       "properties": {
-        "shift-v2.anthropicApiKey": {
+        "shift-v2.openaiApiKey": {
           "type": "string",
           "default": "",
-          "description": "Anthropic API Key for Claude 3.7 model"
+          "description": "OpenAI API Key for O3-Mini model"
         }
       }
     }
@@ -46,7 +46,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
-    "ignore": "^7.0.3"
+    "ignore": "^7.0.3",
+    "openai": "^4.86.1"
   }
 }

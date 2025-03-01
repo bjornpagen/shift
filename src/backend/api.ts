@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk"
+import OpenAI from "openai"
 import * as vscode from "vscode"
 
 export async function analyzeCodebase(
@@ -6,56 +6,37 @@ export async function analyzeCodebase(
   user: string
 ): Promise<string> {
   const config = vscode.workspace.getConfiguration("shift-v2")
-  const apiKey = config.get("anthropicApiKey")
+  const apiKey = config.get("openaiApiKey")
   if (!apiKey) {
-    throw new Error("Anthropic API key is not set.")
+    throw new Error("OpenAI API key is not set.")
   }
-  const anthropic = new Anthropic({ apiKey: apiKey as string })
-  const response = await anthropic.messages.create({
-    model: "claude-3-7-sonnet-latest", // NOTE: never change this model
-    max_tokens: 32000,
-    thinking: {
-      type: "enabled",
-      budget_tokens: 16000
-    },
-    system: [
-      {
-        type: "text",
-        text: system,
-        cache_control: { type: "ephemeral" }
-      }
-    ],
+  const openai = new OpenAI({ apiKey: apiKey as string })
+  const completion = await openai.chat.completions.create({
+    model: "o3-mini", // NOTE: never change this model string, ever
     messages: [
-      {
-        role: "user",
-        content: user
-      }
-    ]
+      { role: "system", content: system },
+      { role: "user", content: user }
+    ],
+    response_format: { type: "json_object" }
   })
-  const textContent = response.content.find((item) => item.type === "text")
-  if (textContent) {
-    return textContent.text.trim()
+  const responseContent = completion.choices[0].message.content
+  if (!responseContent) {
+    throw new Error("No content received from OpenAI API.")
   }
-  return ""
+  return responseContent.trim()
 }
 
 export async function getClarification(prompt: string): Promise<string> {
   const config = vscode.workspace.getConfiguration("shift-v2")
-  const apiKey = config.get("anthropicApiKey")
+  const apiKey = config.get("openaiApiKey")
   if (!apiKey) {
-    throw new Error("Anthropic API key is not set.")
+    throw new Error("OpenAI API key is not set.")
   }
-  const anthropic = new Anthropic({ apiKey: apiKey as string })
-  const response = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20240620",
-    max_tokens: 1024,
-    messages: [
-      {
-        role: "user",
-        content: prompt
-      }
-    ]
+  const openai = new OpenAI({ apiKey: apiKey as string })
+  const completion = await openai.chat.completions.create({
+    model: "o3-mini",
+    messages: [{ role: "user", content: prompt }]
   })
-  const textContent = response.content.find((item) => item.type === "text")
-  return textContent ? textContent.text : ""
+  const responseContent = completion.choices[0].message.content
+  return responseContent ? responseContent.trim() : ""
 }
