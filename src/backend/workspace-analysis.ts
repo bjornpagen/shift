@@ -2,31 +2,25 @@ import * as vscode from "vscode"
 import * as path from "node:path"
 import type { KuzuConnection } from "./kuzu"
 import type { Ignore } from "ignore"
-import { analyze } from "./analysis"
 import { tryCatch } from "../utils/try-catch"
 import { initialLoad } from "./workspace-init"
-import type { Issue } from "../types"
+
+interface AnalysisJob {
+  filePath: string
+  userContent: string
+}
 
 export async function analyzeWorkspace(
   connection: KuzuConnection,
-  ig: Ignore
-): Promise<Issue[]> {
+  ig: Ignore,
+  addToQueue: (job: AnalysisJob) => void
+): Promise<void> {
   console.debug("Starting workspace analysis")
-  const progress = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    100
-  )
-  let analysisCancellation: vscode.CancellationTokenSource | undefined =
-    new vscode.CancellationTokenSource()
 
   try {
-    progress.text = "$(sync~spin) Initializing analysis..."
-    progress.show()
-
     await initialLoad(connection, ig)
 
     console.debug("Gathering file information for analysis")
-    progress.text = "$(sync~spin) Gathering files for analysis..."
 
     const filesResult = await tryCatch(
       connection.query<{ path: string }>("MATCH (f:File) RETURN f.path as path")
@@ -35,7 +29,7 @@ export async function analyzeWorkspace(
     if (filesResult.error) {
       console.error(`Error querying files: ${filesResult.error}`)
       vscode.window.showErrorMessage("Failed to retrieve files from database.")
-      return []
+      return
     }
 
     const filesData = await tryCatch(filesResult.data.getAll())
@@ -43,7 +37,7 @@ export async function analyzeWorkspace(
     if (filesData.error) {
       console.error(`Error getting file data: ${filesData.error}`)
       vscode.window.showErrorMessage("Failed to get file data.")
-      return []
+      return
     }
 
     const files = filesData.data
@@ -53,38 +47,16 @@ export async function analyzeWorkspace(
     if (!workspaceFolders) {
       console.debug("No workspace folders found, aborting analysis")
       vscode.window.showErrorMessage("No workspace folders found.")
-      return []
+      return
     }
     const rootPath = workspaceFolders[0].uri.fsPath
 
-    // Show cancel button in notification
-    const cancelOption = "Cancel Analysis"
-    vscode.window
-      .showInformationMessage(
-        `Starting analysis of ${files.length} files. This may take some time.`,
-        cancelOption
-      )
-      .then((selection) => {
-        if (selection === cancelOption && analysisCancellation) {
-          analysisCancellation.cancel()
-          vscode.window.showInformationMessage("Analysis cancelled.")
-        }
-      })
-
-    // Create array of analysis promises to run in parallel
-    let completedFiles = 0
-    const analysisPromises = files.map(async (file) => {
-      if (analysisCancellation?.token.isCancellationRequested) {
-        return { file: file.path, issues: [] }
-      }
-
+    for (const file of files) {
       console.debug(`Preparing analysis for file: ${file.path}`)
       const filePath = file.path
-      progress.text = `$(sync~spin) Analyzing (${completedFiles}/${files.length}): ${path.basename(filePath)}`
 
       const safeFilePath = filePath.replace(/'/g, "''")
 
-      // Get all functions in this file
       const functionsResult = await tryCatch(
         connection.query<{
           id: string
@@ -104,7 +76,7 @@ export async function analyzeWorkspace(
         console.error(
           `Error querying functions for ${filePath}: ${functionsResult.error}`
         )
-        return { file: filePath, issues: [] }
+        continue
       }
 
       const functionsData = await tryCatch(functionsResult.data.getAll())
@@ -113,19 +85,14 @@ export async function analyzeWorkspace(
         console.error(
           `Error getting function data for ${filePath}: ${functionsData.error}`
         )
-        return { file: filePath, issues: [] }
+        continue
       }
 
       const functions = functionsData.data
       console.debug(`Found ${functions.length} functions in file ${filePath}`)
 
-      // Get all called functions (external dependencies) for each function
       const calledFunctionIds = new Set<string>()
       const functionDependencyPromises = functions.map(async (func) => {
-        if (analysisCancellation?.token.isCancellationRequested) {
-          return []
-        }
-
         const calledFunctionsResult = await tryCatch(
           connection.query<{
             id: string
@@ -178,7 +145,6 @@ export async function analyzeWorkspace(
         `Found ${calledFunctionsArray.length} external function dependencies for file ${filePath}`
       )
 
-      // Get the source code for the file being analyzed
       let fileContent = ""
       try {
         const absolutePath = path.join(rootPath, filePath)
@@ -191,27 +157,21 @@ export async function analyzeWorkspace(
           console.error(
             `Error reading file ${filePath}: ${contentResult.error}`
           )
-          return { file: filePath, issues: [] }
+          continue
         }
 
         fileContent = new TextDecoder().decode(contentResult.data)
       } catch (error) {
         console.error(`Error reading file ${filePath}: ${error}`)
-        return { file: filePath, issues: [] }
+        continue
       }
 
-      // Build context with source code and function dependencies
       let analysisContext = `## File Analysis\n${filePath}\n\n\`\`\`typescript\n${fileContent}\n\`\`\`\n\n`
 
       if (calledFunctionsArray.length > 0) {
         analysisContext += "\n## Function Dependencies\n\n"
 
-        // Get source code for external function dependencies in parallel
         const dependencyPromises = calledFunctionsArray.map(async (funcId) => {
-          if (analysisCancellation?.token.isCancellationRequested) {
-            return null
-          }
-
           const functionInfoResult = await tryCatch(
             connection.query<{
               name: string
@@ -259,8 +219,6 @@ export async function analyzeWorkspace(
             }
 
             const depContent = new TextDecoder().decode(depContentResult.data)
-
-            // Extract just the function code using line numbers
             const lines = depContent.split("\n")
             const functionLines = lines.slice(
               functionInfo.startLine - 1,
@@ -290,74 +248,15 @@ export async function analyzeWorkspace(
         }
       }
 
-      // Call the analyze function with the built context
-      console.debug(`Generating analysis for file: ${filePath}`)
-      try {
-        const issues = await analyze(analysisContext, [])
-        completedFiles++
-        progress.text = `$(sync~spin) Analyzing (${completedFiles}/${files.length}): ${path.basename(filePath)}`
-        return { file: filePath, issues }
-      } catch (error) {
-        console.error(`Error analyzing file ${filePath}: ${error}`)
-        completedFiles++
-        progress.text = `$(sync~spin) Analyzing (${completedFiles}/${files.length}): ${path.basename(filePath)}`
-        return { file: filePath, issues: [] }
-      }
-    })
-
-    // Run all analyses in parallel with a concurrency limit
-    console.debug(`Starting parallel analysis of ${files.length} files`)
-    const concurrencyLimit = 5 // Limit concurrent API calls
-    const chunks = []
-    for (let i = 0; i < analysisPromises.length; i += concurrencyLimit) {
-      if (analysisCancellation?.token.isCancellationRequested) {
-        break
-      }
-      chunks.push(analysisPromises.slice(i, i + concurrencyLimit))
+      console.debug(`Adding analysis job for file: ${filePath}`)
+      addToQueue({ filePath, userContent: analysisContext })
     }
 
-    const results: PromiseSettledResult<{ file: string; issues: Issue[] }>[] =
-      []
-    for (const chunk of chunks) {
-      if (analysisCancellation?.token.isCancellationRequested) {
-        break
-      }
-      const chunkResults = await Promise.allSettled(chunk)
-      results.push(...chunkResults)
-    }
-
-    const allIssues: Issue[] = []
-
-    // Process results
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        const { issues } = result.value
-        if (issues && issues.length > 0) {
-          allIssues.push(...issues)
-        }
-      } else {
-        console.error(`Analysis failed: ${result.reason}`)
-      }
-    }
-
-    console.debug(`Analysis completed with ${allIssues.length} issues found`)
-    if (!analysisCancellation?.token.isCancellationRequested) {
-      vscode.window.showInformationMessage(
-        `Analysis completed with ${allIssues.length} issues found.`
-      )
-    }
-
-    console.debug("Workspace analysis completed")
-    return allIssues
+    console.debug("Workspace analysis jobs queued")
   } catch (error) {
     console.error("Error in workspace analysis:", error)
     vscode.window.showErrorMessage(
       `Analysis failed: ${error instanceof Error ? error.message : "Unknown error"}`
     )
-    return []
-  } finally {
-    progress.dispose()
-    analysisCancellation?.dispose()
-    analysisCancellation = undefined
   }
 }

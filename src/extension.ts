@@ -11,13 +11,86 @@ import { tryCatch } from "./utils/try-catch"
 import { analyze } from "./backend/analysis"
 import { showIssueDetails } from "./frontend/issueDetails"
 import type { Issue } from "./types"
+import * as path from "node:path"
 
-// Global state
+// Global state for analysis queue
+interface AnalysisJob {
+  filePath: string
+  userContent: string
+}
+
+const analysisQueue: AnalysisJob[] = []
+let currentJob: AnalysisJob | null = null
+let statusBarItem: vscode.StatusBarItem | null = null
 let initializationPromise: Promise<KuzuConnection> | undefined
 const gitignorePromise = getGitignorePatterns()
 let currentIssues: Issue[] = []
-let workspaceIssues: Issue[] = [] // Added to store workspace analysis issues
-let isAnalyzing = false
+
+async function processQueue() {
+  while (true) {
+    if (currentJob === null && analysisQueue.length > 0) {
+      const nextJob = analysisQueue.shift()
+      if (nextJob) {
+        currentJob = nextJob
+        updateStatusBar()
+        try {
+          const issues = await analyze(currentJob.userContent, [])
+          currentIssues = issues
+          updateDecorations()
+          for (const issue of issues) {
+            const relativeFile = vscode.workspace.asRelativePath(
+              issue.file,
+              false
+            )
+            await vscode.window
+              .showWarningMessage(
+                `Issue in ${relativeFile}: ${issue.description}`,
+                "Tell Me More"
+              )
+              .then((selection) => {
+                if (selection === "Tell Me More") {
+                  showIssueDetails(issue)
+                }
+              })
+          }
+        } catch (error) {
+          console.error(`Error analyzing ${currentJob.filePath}:`, error)
+        } finally {
+          currentJob = null
+          updateStatusBar()
+        }
+      }
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
+}
+
+function updateStatusBar() {
+  if (!statusBarItem) {
+    statusBarItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Left,
+      100
+    )
+  }
+  if (currentJob) {
+    const pending = analysisQueue.length
+    statusBarItem.text = `$(sync~spin) Analyzing: ${path.basename(
+      currentJob.filePath
+    )} (${pending} pending)`
+    statusBarItem.show()
+  } else if (analysisQueue.length > 0) {
+    statusBarItem.text = `$(sync~spin) Analysis pending: ${analysisQueue.length} jobs`
+    statusBarItem.show()
+  } else {
+    statusBarItem.hide()
+  }
+}
+
+async function addToQueue(job: AnalysisJob) {
+  analysisQueue.push(job)
+  updateStatusBar()
+}
 
 async function getGitignorePatterns(): Promise<Ignore> {
   console.debug("Fetching .gitignore patterns")
@@ -35,9 +108,6 @@ async function getGitignorePatterns(): Promise<Ignore> {
     )
     console.debug("Using default ignore patterns only")
     ig.add(["node_modules/**", "dist/**", "*.log"])
-    console.debug(
-      "Added default ignore patterns: node_modules/**, dist/**, *.log"
-    )
     return ig
   }
 
@@ -91,14 +161,12 @@ function detectLanguage(filePath: string): string | null {
   }
 }
 
-// Define decoration type for code highlights with softer yellow squiggly lines
 const issueDecorationType = vscode.window.createTextEditorDecorationType({
   textDecoration: "underline wavy #FFECB3",
   overviewRulerColor: "#FFECB3",
   overviewRulerLane: vscode.OverviewRulerLane.Right
 })
 
-// Parse line range from issue location (e.g., "lines 5-7")
 function parseLineRange(
   location: string
 ): { start: number; end: number } | null {
@@ -109,7 +177,6 @@ function parseLineRange(
   return null
 }
 
-// Update decorations for all visible editors
 function updateDecorations() {
   const issuesByFile: Map<string, Issue[]> = new Map()
   for (const issue of currentIssues) {
@@ -125,7 +192,6 @@ function updateDecorations() {
       .map((issue) => {
         const lineRange = parseLineRange(issue.location)
         if (lineRange) {
-          // Convert to 0-based line numbers
           return new vscode.Range(lineRange.start - 1, 0, lineRange.end - 1, 0)
         }
         return null
@@ -171,56 +237,12 @@ async function handleDocumentUpdate(
       console.debug(`Database updated for ${document.fileName}`)
     }
 
-    // Run analysis on save if we're not already analyzing
-    if (!isAnalyzing) {
-      isAnalyzing = true
-      console.debug("Starting file analysis")
-      const status = vscode.window.setStatusBarMessage("Analyzing file...")
-      try {
-        // Prepare content for analysis
-        const lines = newContent.split("\n")
-        const numberedContent = lines
-          .map((line, index) => `${index + 1}: ${line}`)
-          .join("\n")
-        const userContent = `# Analyzing File: ${document.fileName}\n\n## Content\n\`\`\`typescript\n${numberedContent}\n\`\`\``
-
-        // Get issues from the current file
-        const issues = await analyze(userContent, []) // Using empty array for kuzuIssues parameter
-        console.debug(`Found ${issues.length} issues`)
-        currentIssues = issues
-        updateDecorations() // Apply squiggly lines after analysis
-
-        // Notify about each issue
-        for (const issue of issues) {
-          console.debug(
-            `Notifying issue in ${issue.file}: ${issue.description}`
-          )
-          const relativeFile = vscode.workspace.asRelativePath(
-            issue.file,
-            false
-          )
-          await vscode.window
-            .showWarningMessage(
-              `Issue in ${relativeFile}: ${issue.description}`,
-              "Tell Me More"
-            )
-            .then((selection) => {
-              if (selection === "Tell Me More") {
-                console.debug(`Showing details for issue in ${issue.file}`)
-                showIssueDetails(issue)
-              }
-            })
-        }
-      } catch (error) {
-        console.error("Error in file analysis:", error)
-      } finally {
-        status.dispose()
-        isAnalyzing = false
-        console.debug("File analysis completed")
-      }
-    } else {
-      console.debug("Skipping analysis - already in progress")
-    }
+    const lines = newContent.split("\n")
+    const numberedContent = lines
+      .map((line, index) => `${index + 1}: ${line}`)
+      .join("\n")
+    const userContent = `# Analyzing File: ${document.fileName}\n\n## Content\n\`\`\`typescript\n${numberedContent}\n\`\`\``
+    await addToQueue({ filePath: document.fileName, userContent })
   } else {
     console.debug(
       `No language detected or no initialization for ${document.fileName}`
@@ -228,7 +250,6 @@ async function handleDocumentUpdate(
   }
 }
 
-// Function to escape HTML characters
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&")
@@ -238,8 +259,7 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "'")
 }
 
-// New function to display all issues in a webview
-function showAllIssues(issues: Issue[]) {
+export function showAllIssues(issues: Issue[]) {
   const panel = vscode.window.createWebviewPanel(
     "shiftV2AllIssues",
     "All Issues",
@@ -362,6 +382,9 @@ export function activate(context: vscode.ExtensionContext) {
     })
     .then((connection) => {
       console.debug("Kùzu database initialized successfully")
+      processQueue().catch((error) =>
+        console.error("Queue processor error:", error)
+      )
       return connection
     })
     .catch((err: unknown) => {
@@ -430,82 +453,41 @@ export function activate(context: vscode.ExtensionContext) {
         return
       }
 
-      if (isAnalyzing) {
-        vscode.window.showInformationMessage(
-          "Analysis is already in progress. Please wait for it to complete."
+      const connectionResult = await tryCatch(initializationPromise)
+      if (connectionResult.error) {
+        console.error("Analysis failed:", connectionResult.error)
+        vscode.window.showErrorMessage(
+          "Failed to initialize database. Check the logs for details."
         )
         return
       }
 
-      isAnalyzing = true
-
-      try {
-        const connectionResult = await tryCatch(initializationPromise)
-        if (connectionResult.error) {
-          console.error("Analysis failed:", connectionResult.error)
-          vscode.window.showErrorMessage(
-            "Failed to initialize database. Check the logs for details."
-          )
-          return
-        }
-
-        const igResult = await tryCatch(gitignorePromise)
-        if (igResult.error) {
-          console.error("Failed to get ignore patterns:", igResult.error)
-          vscode.window.showErrorMessage(
-            "Failed to get ignore patterns. Check the logs for details."
-          )
-          return
-        }
-
-        console.debug(
-          "Database connection and ignore patterns ready for analysis"
-        )
-
-        const analyzeResult = await tryCatch(
-          analyzeWorkspace(connectionResult.data, igResult.data)
-        )
-
-        if (analyzeResult.error) {
-          console.error("Analysis failed:", analyzeResult.error)
-          vscode.window.showErrorMessage(
-            `Failed to analyze workspace: ${analyzeResult.error instanceof Error ? analyzeResult.error.message : "Unknown error"}`
-          )
-          return
-        }
-
-        // Store the issues and show warning message with button
-        workspaceIssues = analyzeResult.data
-        vscode.window
-          .showWarningMessage(
-            `Analysis completed with ${workspaceIssues.length} issues found.`,
-            "View Details"
-          )
-          .then((selection) => {
-            if (selection === "View Details") {
-              showAllIssues(workspaceIssues)
-            }
-          })
-
-        console.debug("Analyze command completed")
-      } catch (error) {
-        console.error("Analysis failed:", error)
+      const igResult = await tryCatch(gitignorePromise)
+      if (igResult.error) {
+        console.error("Failed to get ignore patterns:", igResult.error)
         vscode.window.showErrorMessage(
-          `Analysis failed: ${error instanceof Error ? error.message : "Unknown error"}`
+          "Failed to get ignore patterns. Check the logs for details."
         )
-      } finally {
-        isAnalyzing = false
+        return
       }
+
+      console.debug(
+        "Database connection and ignore patterns ready for analysis"
+      )
+
+      await analyzeWorkspace(connectionResult.data, igResult.data, addToQueue)
+      vscode.window.showInformationMessage(
+        "Workspace analysis jobs added to queue."
+      )
     }
   )
 
-  // Register hover provider with clickable link
   const hoverProvider = vscode.languages.registerHoverProvider(
     ["javascript", "typescript", "javascriptreact", "typescriptreact"],
     {
       provideHover(document, position) {
         const filePath = document.fileName
-        const line = position.line + 1 // Convert to 1-based line numbers
+        const line = position.line + 1
         const fileIssues = currentIssues.filter(
           (issue) => issue.file === filePath
         )
@@ -523,9 +505,11 @@ export function activate(context: vscode.ExtensionContext) {
               `**Suggestion:** ${issue.suggestion}\n\n`
             )
             hoverContent.appendMarkdown(
-              `[Open Details](command:shift-v2.openIssueDetails?${encodeURIComponent(JSON.stringify([issueIndex]))})`
+              `[Open Details](command:shift-v2.openIssueDetails?${encodeURIComponent(
+                JSON.stringify([issueIndex])
+              )})`
             )
-            hoverContent.isTrusted = true // Allow command links
+            hoverContent.isTrusted = true
             return new vscode.Hover(hoverContent)
           }
         }
@@ -534,7 +518,6 @@ export function activate(context: vscode.ExtensionContext) {
     }
   )
 
-  // Register command to open issue details
   const openIssueDetailsCommand = vscode.commands.registerCommand(
     "shift-v2.openIssueDetails",
     (issueIndex: number) => {

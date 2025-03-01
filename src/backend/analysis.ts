@@ -23,22 +23,31 @@ const IssueSchema = z.object({
 const AnalysisSchema = z.object({
   issues: z
     .array(IssueSchema)
-    .describe("Array of architectural issues found in the codebase")
+    .describe(
+      "Array of architectural issues found in the codebase. If no issues are found, return an empty array ([]) to indicate no problems, rather than providing a vague or unnecessary statement."
+    )
 })
 
 const ClarificationSchema = z.object({
   response: z.string().describe("Clarification response")
 })
 
-const analysisInstructions = `You are an AI assistant tasked with analyzing codebases for **architectural issues**. Architectural issues are problems that significantly impact the system's performance, scalability, maintainability, or other key qualities. They are **not** stylistic preferences, syntax errors, linter warnings, or minor programming mistakes.
+const analysisInstructions = `
+You are an AI assistant tasked with analyzing codebases for **architectural issues**. Architectural issues are problems that significantly impact the system's performance, scalability, maintainability, or other key qualities. They are **not** stylistic preferences, syntax errors, linter warnings, or minor programming mistakes.
 
 Note: The code provided has line numbers prepended to each line, like '1: function foo() {'.
 
 ## Instructions for Analysis:
-- Focus on identifying architectural issues within this snippet and its connections, such as inefficient data fetching, circular dependencies, or improper use of data models.
-- Identify issues with a **clear, measurable impact** on performance, scalability, or maintainability (e.g., increased latency, excessive resource use, unnecessary complexity/dependencies).
-- Issues must have concrete negative impact on the system NOW, and must not be hypothetical, theoretical, or based on assumptions.
-- Do **not** flag stylistic choices or hypothetical problems without current evidence of impact.
+- Focus on identifying architectural issues within this snippet and its connections.
+- Identify issues with a **clear, measurable, and current impact** on performance, scalability, or maintainability.
+- Issues must be based on concrete evidence from the current system, not on hypothetical scenarios or future assumptions.
+- Do **not** flag stylistic choices, syntax errors, or minor programming mistakes unless they directly contribute to a measurable architectural issue.
+
+### Bad Examples of Issues:
+1. **Hypothetical Performance Issue:**
+   - **Issue:** Synchronous file reading in \`sql-parse/mysql.ts\` could cause delays with large SQL dumps.
+   - **Details:** The module uses \`fs.readFileSync\` to read the SQL file, which blocks the event loop during file I/O operations. In scenarios where very large SQL dumps are processed or when this code is repurposed in environments that require high responsiveness, this synchronous operation can introduce noticeable delays.
+   - **Why it's bad:** While true, in this particular codebase, which is a CLI tool, this is an unrealistic scenario. There’s no evidence that large SQL dumps are being processed or that delays are occurring in the current system. Flagging this assumes future conditions without current measurable impact.
 
 ### ALWAYS CHIME IN IF:
 - You see a pattern that suggests a library, tool, or architectural choice is not a good fit for the project.
