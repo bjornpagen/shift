@@ -6,16 +6,24 @@ import type { Issue, KuzuIssue } from "../types"
 import { tryCatch } from "../utils/try-catch"
 
 const IssueSchema = z.object({
-  file: z.string(),
-  location: z.string(),
-  description: z.string(),
-  explanation: z.string(),
-  suggestion: z.string(),
-  reasoning: z.string()
+  file: z.string().describe("Full file path"),
+  location: z.string().describe("Specific lines (e.g., 'lines 10-15')"),
+  description: z.string().describe("Concise summary (max 100 characters)"),
+  explanation: z
+    .string()
+    .describe("Detailed, measurable impact (3-5 sentences)"),
+  suggestion: z.string().describe("Specific fix with brief justification"),
+  reasoning: z
+    .string()
+    .describe(
+      "Detailed explanation of why this is an issue and how it affects the system"
+    )
 })
 
 const AnalysisSchema = z.object({
-  issues: z.array(IssueSchema)
+  issues: z
+    .array(IssueSchema)
+    .describe("Array of architectural issues found in the codebase")
 })
 
 const ClarificationSchema = z.object({
@@ -26,21 +34,14 @@ const analysisInstructions = `You are an AI assistant tasked with analyzing code
 
 Note: The code provided has line numbers prepended to each line, like '1: function foo() {'.
 
-### Instructions for Analysis:
+## Instructions for Analysis:
 - Focus on identifying architectural issues within this snippet and its connections, such as inefficient data fetching, circular dependencies, or improper use of data models.
 - Identify issues with a **clear, measurable impact** on performance, scalability, or maintainability (e.g., increased latency, excessive resource use, unnecessary complexity/dependencies).
-- **Avoid buzzwords** like "separation of concerns" unless tied to a concrete consequence (e.g., "this doubles CPU usage").
-- Do **not** flag stylistic choices or hypothetical problems without current evidence (e.g., "this caused a 500ms delay in tests").
-- Focus on patterns where libraries, tools, or architectural choices mismatch the project's needs, backed by specific metrics or observations.
+- Issues must have concrete negative impact on the system NOW, and must not be hypothetical, theoretical, or based on assumptions.
+- Do **not** flag stylistic choices or hypothetical problems without current evidence of impact.
 
-### Output Format:
-- Return a JSON object with a single key "issues", which is an array of objects with these keys:
-  - "file": full file path.
-  - "location": specific lines (e.g., 'lines 10-15').
-  - "description": concise summary (max 100 characters).
-  - "explanation": detailed, measurable impact (3-5 sentences).
-  - "suggestion": specific fix with brief justification.
-  - "reasoning": detailed explanation of why this is an issue and how it affects the system.
+### ALWAYS CHIME IN IF:
+- You see a pattern that suggests a library, tool, or architectural choice is not a good fit for the project.
 `
 
 async function retryWithExponentialBackoff<T>(
