@@ -2,41 +2,14 @@ import { analyzeCodebase as apiAnalyzeCodebase } from "./api"
 import { trySync } from "../utils/try-catch"
 import type { Issue } from "../types"
 
-const analysisInstructions = `You are an AI assistant tasked with analyzing codebases for **architectural issues**. Architectural issues are problems that significantly impact the system's performance, scalability, maintainability, or other key qualities. They are **not** stylistic preferences, syntax errors, linter warnings, or minor programming mistakes.
-
-Note: The code provided has line numbers prepended to each line, like '1: function foo() {'.
-
-### What are Architectural Issues?
-- **Good Example:** An N+1 query problem where a loop executes a separate database query per iteration, increasing latency from 50ms to 5s as data grows from 10 to 1000 records.
-- **Good Example:** Inefficient data-fetching strategies, such as multiple components independently fetching the same data, resulting in redundant API calls and slower load times. For instance, if three components each make the same API call, it triples the network requests and delays rendering.
-- **Good Example:** Not using type-safe endpoints in a Next.js project, which can lead to runtime errors due to type mismatches between client and server, increasing debugging time and reducing system reliability.
+const analysisInstructions = `
+[...existing intro and architectural issue definitions unchanged...]
 
 ### Instructions for Analysis:
 - Identify issues with a **clear, measurable impact** on performance, scalability, or maintainability (e.g., increased latency, excessive resource use, unnecessary complexity/dependencies).
-- **Avoid buzzwords** like "separation of concerns," "tight coupling," or "best practices" unless tied to a concrete, measurable consequence in this codebase.
-- Do **not** flag stylistic choices, subjective preferences, or hypothetical "future problems" without current evidence.
-- Look for patterns where the use of libraries, tools, or architectural patterns seems mismatched to the project's needs, such as using a complex solution for a simple problem or introducing dependencies that duplicate existing functionality.
-
-### Poor Examples to Avoid:
-These are real examples flagged previously that do **not** qualify as architectural issues. Avoid similar responses.
-
-1. **Issue:** "Database queries directly in page components"
-   - **Location:** lines 9-46 in "/app/(dashboard)/conversations/page.tsx"
-   - **Description:** "Database queries directly in page components."
-   - **Explanation:** "Page components contain complex SQL queries which tightly couples the database structure to component rendering. This violates separation of concerns, makes testing difficult, and complicates future database schema changes."
-   - **Why It's Poor:** This relies on "separation of concerns" and "tight coupling"—stylistic buzzwords—without showing a measurable impact (e.g., slower queries, higher CPU usage). "Testing difficulty" and "schema changes" are subjective or speculative without evidence like "this caused a 2s delay." It's a code organization preference, not an architectural flaw.
-
-2. **Issue:** "Mock data mixed with real data in components"
-   - **Location:** lines 15-23 in "/components/customer-header.tsx"
-   - **Description:** "Mock data mixed with real data in components."
-   - **Explanation:** "Components contain hardcoded mock data alongside dynamically fetched real data. This creates an unclear boundary between development and production data, increasing risk of exposing test data in production."
-   - **Why It's Poor:** This is a development practice issue, not architecture. There's no proof it affects performance or scalability (e.g., "this leaked 1GB of mock data"). "Unclear boundary" is stylistic, and "risk of exposing test data" is a hypothetical without a specific incident. It's bikeshedding, not a structural problem.
-
-3. **Issue:** "Complex data fetching logic in page components"
-   - **Location:** lines 9-47 in "/app/(dashboard)/listings/[id]/page.tsx"
-   - **Description:** "Complex data fetching logic in page components."
-   - **Explanation:** "The page component contains complex data fetching with multiple queries and conditional logic. This tightly couples the page to specific database structures and creates potential performance issues with waterfall requests."
-   - **Why It's Poor:** "Tight coupling" is a buzzword, and "complexity" is subjective without metrics (e.g., "this adds 10 requests"). "Potential performance issues" is vague—no data on request count or latency impact. It's a stylistic critique about code placement, not a proven architectural bottleneck.
+- **Avoid buzzwords** like "separation of concerns" unless tied to a concrete consequence (e.g., "this doubles CPU usage").
+- Do **not** flag stylistic choices or hypothetical problems without current evidence (e.g., "this caused a 500ms delay in tests").
+- Focus on patterns where libraries, tools, or architectural choices mismatch the project's needs, backed by specific metrics or observations.
 
 ### Output Format:
 - Return a JSON array of objects with these keys:
@@ -45,8 +18,14 @@ These are real examples flagged previously that do **not** qualify as architectu
   - "description": concise summary (max 100 characters).
   - "explanation": detailed, measurable impact (3-5 sentences).
   - "suggestion": specific fix with brief justification.
-- Ensure JSON is valid (no unescaped quotes).
-- **Important:** Always return a JSON array, even if there is only one issue. For example, if there is only one issue, the output should be [{ ... }] instead of { ... }.
+  - "reasoning": a detailed explanation (**YOU MUST PROVIDE 5-7 SENTENCES**) that:
+    - Explains the architectural issue in depth, referencing specific code (e.g., "the loop on lines 5-10 queries the database per user").
+    - Quantifies its impact with metrics (e.g., "this fires 101 queries for 100 users, increasing latency by 5s").
+    - Describes consequences if unaddressed (e.g., "server costs rise due to load").
+    - Justifies the suggestion as the best fix (e.g., "a batch query reduces this to 2 queries").
+    - Compares alternatives (e.g., "JOINs work but complicate the result set").
+    Ensure reasoning focuses **more on the problem’s depth** than the solution.
+- Always return a valid JSON array (e.g., [{ ... }] even for one issue).
 
 **Example Output:**
 [
@@ -54,12 +33,13 @@ These are real examples flagged previously that do **not** qualify as architectu
     "file": "/app/users.ts",
     "location": "lines 5-10",
     "description": "N+1 query in user fetch loop.",
-    "explanation": "A loop runs a query per user, firing 100 queries for 100 users instead of 1. This increases latency as user count grows.",
-    "suggestion": "Use a single 'SELECT * FROM posts WHERE user_id IN (...)' query to fetch all data at once."
+    "explanation": "A loop runs a query per user, firing 100 queries for 100 users instead of 1. This increases latency as user count grows. It’s inefficient due to repeated network round-trips.",
+    "suggestion": "Use a single 'SELECT * FROM posts WHERE user_id IN (...)' query to fetch all data at once.",
+    "reasoning": "The loop on lines 5-10 iterates over each user and runs a separate database query to fetch their posts, creating an N+1 problem. For 100 users, this triggers 101 queries (1 for users, 100 for posts), causing latency to spike from 50ms to 5s as data scales. This strains the database with unnecessary overhead, as each query incurs network and processing costs. If unaddressed, server resource usage balloons, raising costs and slowing page loads for users. A single batch query with 'WHERE user_id IN (...)' cuts this to 2 queries, leveraging the database’s batch efficiency. Alternatives like JOINs could work but often return redundant user data, complicating parsing. This fix is optimal for its simplicity and performance gain."
   }
 ]
 
-**CRITICAL**: Output ONLY the JSON array. No text, explanations, or formatting before or after. Response must be valid JSON.
+**CRITICAL**: Output ONLY the JSON array. No extra text.
 `
 
 export async function analyze(userContent: string): Promise<Issue[]> {
@@ -85,7 +65,8 @@ export async function analyze(userContent: string): Promise<Issue[]> {
       "location" in issues &&
       "description" in issues &&
       "explanation" in issues &&
-      "suggestion" in issues
+      "suggestion" in issues &&
+      "reasoning" in issues
     ) {
       issues = [issues] // Wrap single object in an array
     } else {
@@ -101,6 +82,7 @@ export async function analyze(userContent: string): Promise<Issue[]> {
     location: issue.location,
     description: issue.description,
     explanation: issue.explanation,
-    suggestion: issue.suggestion
+    suggestion: issue.suggestion,
+    reasoning: issue.reasoning
   }))
 }

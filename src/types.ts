@@ -4,4 +4,5 @@ export interface Issue {
   description: string
   explanation: string
   suggestion: string
+  reasoning: string
 }
