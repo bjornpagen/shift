@@ -4,3 +4,4 @@ ignore_patterns:
   - "bun.lock"
   - "biome.json"
   - "tsconfig.json"
+  - "*.code-workspace"
