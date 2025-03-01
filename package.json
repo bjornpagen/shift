@@ -40,6 +40,14 @@
       {
         "command": "shift-v2.analyze",
         "title": "Shift-V2: Analyze Workspace"
+      },
+      {
+        "command": "shift-v2.showAllIssues",
+        "title": "Shift-V2: Show All Issues"
+      },
+      {
+        "command": "shift-v2.openIssueDetails",
+        "title": "Shift-V2: Open Issue Details"
       }
     ]
   },

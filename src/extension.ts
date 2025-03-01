@@ -24,7 +24,7 @@ let currentJob: AnalysisJob | null = null
 let statusBarItem: vscode.StatusBarItem | null = null
 let initializationPromise: Promise<KuzuConnection> | undefined
 const gitignorePromise = getGitignorePatterns()
-let currentIssues: Issue[] = []
+const issuesByFile: Map<string, Issue[]> = new Map()
 
 async function processQueue() {
   while (true) {
@@ -35,7 +35,7 @@ async function processQueue() {
         updateStatusBar()
         try {
           const issues = await analyze(currentJob.userContent, [])
-          currentIssues = issues
+          issuesByFile.set(currentJob.filePath, issues)
           updateDecorations()
           for (const issue of issues) {
             const relativeFile = vscode.workspace.asRelativePath(
@@ -72,19 +72,22 @@ function updateStatusBar() {
       vscode.StatusBarAlignment.Left,
       100
     )
+    statusBarItem.command = "shift-v2.showAllIssues"
   }
   if (currentJob) {
     const pending = analysisQueue.length
-    statusBarItem.text = `$(sync~spin) Analyzing: ${path.basename(
-      currentJob.filePath
-    )} (${pending} pending)`
-    statusBarItem.show()
+    statusBarItem.text = `$(sync~spin) Analyzing: ${path.basename(currentJob.filePath)} (${pending} pending)`
+    statusBarItem.tooltip = "Shift-V2 is analyzing files"
   } else if (analysisQueue.length > 0) {
     statusBarItem.text = `$(sync~spin) Analysis pending: ${analysisQueue.length} jobs`
-    statusBarItem.show()
+    statusBarItem.tooltip = "Shift-V2 is analyzing files"
   } else {
-    statusBarItem.hide()
+    const allIssues = Array.from(issuesByFile.values()).flat()
+    const totalIssues = allIssues.length
+    statusBarItem.text = `Shift-V2: ${totalIssues} issues`
+    statusBarItem.tooltip = "Click to view all issues"
   }
+  statusBarItem.show()
 }
 
 async function addToQueue(job: AnalysisJob) {
@@ -178,13 +181,6 @@ function parseLineRange(
 }
 
 function updateDecorations() {
-  const issuesByFile: Map<string, Issue[]> = new Map()
-  for (const issue of currentIssues) {
-    if (!issuesByFile.has(issue.file)) {
-      issuesByFile.set(issue.file, [])
-    }
-    issuesByFile.get(issue.file)?.push(issue)
-  }
   for (const editor of vscode.window.visibleTextEditors) {
     const filePath = editor.document.fileName
     const fileIssues = issuesByFile.get(filePath) || []
@@ -252,11 +248,11 @@ async function handleDocumentUpdate(
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
-    .replace(/"/g, '"')
-    .replace(/'/g, "'")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
 }
 
 export function showAllIssues(issues: Issue[]) {
@@ -482,20 +478,25 @@ export function activate(context: vscode.ExtensionContext) {
     }
   )
 
+  const showAllIssuesCommand = vscode.commands.registerCommand(
+    "shift-v2.showAllIssues",
+    () => {
+      const allIssues = Array.from(issuesByFile.values()).flat()
+      showAllIssues(allIssues)
+    }
+  )
+
   const hoverProvider = vscode.languages.registerHoverProvider(
     ["javascript", "typescript", "javascriptreact", "typescriptreact"],
     {
       provideHover(document, position) {
         const filePath = document.fileName
         const line = position.line + 1
-        const fileIssues = currentIssues.filter(
-          (issue) => issue.file === filePath
-        )
-        for (let i = 0; i < fileIssues.length; i++) {
-          const issue = fileIssues[i]
+        const fileIssues = issuesByFile.get(filePath) || []
+        for (const issue of fileIssues) {
           const lineRange = parseLineRange(issue.location)
           if (lineRange && line >= lineRange.start && line <= lineRange.end) {
-            const issueIndex = currentIssues.indexOf(issue)
+            const issueIndex = fileIssues.indexOf(issue)
             const hoverContent = new vscode.MarkdownString()
             hoverContent.appendMarkdown(`**Issue:** ${issue.description}\n\n`)
             hoverContent.appendMarkdown(
@@ -506,7 +507,7 @@ export function activate(context: vscode.ExtensionContext) {
             )
             hoverContent.appendMarkdown(
               `[Open Details](command:shift-v2.openIssueDetails?${encodeURIComponent(
-                JSON.stringify([issueIndex])
+                JSON.stringify([filePath, issueIndex])
               )})`
             )
             hoverContent.isTrusted = true
@@ -520,9 +521,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   const openIssueDetailsCommand = vscode.commands.registerCommand(
     "shift-v2.openIssueDetails",
-    (issueIndex: number) => {
-      if (issueIndex >= 0 && issueIndex < currentIssues.length) {
-        const issue = currentIssues[issueIndex]
+    (filePath: string, issueIndex: number) => {
+      const fileIssues = issuesByFile.get(filePath)
+      if (fileIssues && issueIndex >= 0 && issueIndex < fileIssues.length) {
+        const issue = fileIssues[issueIndex]
         showIssueDetails(issue)
       }
     }
@@ -538,6 +540,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     initialLoadDisposable,
     analyzeDisposable,
+    showAllIssuesCommand,
     saveListener,
     hoverProvider,
     openIssueDetailsCommand
