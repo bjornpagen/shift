@@ -298,8 +298,22 @@ export async function updateKuzuDatabase(
     if (!newFunctionIds.has(func.id)) {
       console.debug(`Removing function ${func.name} (ID: ${func.id})`)
 
-      // Important: We need to maintain relationships by only deleting the function node
-      // and its HasFunction relationship, but preserve any Calls relationships
+      // Delete all connected Calls relationships first
+      const deleteCallsResult = await tryCatch(
+        conn.query(
+          `MATCH (func:Function {id: '${func.id.replace(/'/g, "''")}'})-[r:Calls]-()
+           DELETE r`
+        )
+      )
+
+      if (deleteCallsResult.error) {
+        console.error(
+          `Error deleting Calls relationships for ${func.id}: ${deleteCallsResult.error}`
+        )
+        // Continue despite the error to attempt node deletion
+      }
+
+      // Then delete the Function node and its HasFunction relationship
       const deleteResult = await tryCatch(
         conn.query(
           `MATCH (f:File {path: '${safeFilePath}'})-[r:HasFunction]->(func:Function {id: '${func.id.replace(/'/g, "''")}'})

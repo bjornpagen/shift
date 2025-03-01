@@ -226,6 +226,16 @@ async function handleDocumentUpdate(
   }
 }
 
+// Function to escape HTML characters
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
 // New function to display all issues in a webview
 function showAllIssues(issues: Issue[]) {
   const panel = vscode.window.createWebviewPanel(
@@ -235,14 +245,64 @@ function showAllIssues(issues: Issue[]) {
     { enableScripts: true }
   )
 
+  const styles = `
+    body {
+      font-family: var(--vscode-font-family);
+      color: var(--vscode-editor-foreground);
+      background-color: var(--vscode-editor-background);
+      padding: 24px;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    h1 {
+      color: var(--vscode-editor-foreground);
+      font-weight: 600;
+      margin: 0 0 24px 0;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--vscode-editorGroup-border);
+      font-size: 1.4em;
+    }
+
+    .issue {
+      background: var(--vscode-editorWidget-background);
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .issue h3 {
+      margin: 0 0 8px 0;
+      font-size: 1.1em;
+      color: var(--vscode-editor-foreground);
+    }
+
+    .issue p {
+      margin: 4px 0;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    button {
+      background-color: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background-color 0.2s;
+    }
+
+    button:hover {
+      background-color: var(--vscode-button-hoverBackground);
+    }
+  `
+
   const html = `
     <html>
       <head>
-        <style>
-          body { font-family: sans-serif; padding: 20px; }
-          .issue { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; }
-          button { margin-top: 10px; }
-        </style>
+        <style>${styles}</style>
       </head>
       <body>
         <h1>All Issues</h1>
@@ -250,9 +310,9 @@ function showAllIssues(issues: Issue[]) {
           .map(
             (issue, index) => `
           <div class="issue">
-            <h3>${issue.description}</h3>
-            <p>File: ${issue.file}</p>
-            <p>Location: ${issue.location}</p>
+            <h3>${escapeHtml(issue.description)}</h3>
+            <p>File: ${escapeHtml(issue.file)}</p>
+            <p>Location: ${escapeHtml(issue.location)}</p>
             <button onclick="vscode.postMessage({command: 'openIssue', index: ${index}})">View Details</button>
           </div>
         `
