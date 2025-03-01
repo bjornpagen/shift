@@ -40,19 +40,7 @@ Note: The code provided has line numbers prepended to each line, like '1: functi
   - "description": concise summary (max 100 characters).
   - "explanation": detailed, measurable impact (3-5 sentences).
   - "suggestion": specific fix with brief justification.
-
-**Example Output:**
-[
-  {
-    "file": "/app/users.ts",
-    "location": "lines 5-10",
-    "description": "N+1 query in user fetch loop.",
-    "explanation": "A loop runs a query per user, firing 100 queries for 100 users instead of 1. This increases latency as user count grows. It's inefficient due to repeated network round-trips.",
-    "suggestion": "Use a single 'SELECT * FROM posts WHERE user_id IN (...)' query to fetch all data at once."
-  }
-]
-
-**CRITICAL**: Output ONLY the JSON array. No extra text.
+  - "reasoning": detailed explanation of why this is an issue and how it affects the system.
 `
 
 async function retryWithExponentialBackoff<T>(
