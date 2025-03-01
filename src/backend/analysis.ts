@@ -49,15 +49,30 @@ async function retryWithExponentialBackoff<T>(
   exponentialBase = 2,
   jitter = true,
   maxRetries = 10,
-  errors: ErrorConstructor[] = [RateLimitError as unknown as ErrorConstructor]
+  errors: ErrorConstructor[] = [RateLimitError as unknown as ErrorConstructor],
+  timeout = 30000
 ): Promise<T> {
   let delay = initialDelay
   let retries = 0
   while (true) {
-    const result = await tryCatch<T>(fn())
+    const result = await tryCatch<T>(
+      Promise.race([
+        fn(),
+        new Promise<T>((_, reject) => {
+          setTimeout(() => reject(new Error("Request timeout")), timeout)
+        })
+      ])
+    )
 
     if (result.error === null) {
       return result.data as T
+    }
+
+    if (
+      result.error instanceof Error &&
+      result.error.message === "Request timeout"
+    ) {
+      throw new Error(`Request timed out after ${timeout}ms`)
     }
 
     if (!errors.some((E) => result.error instanceof E)) {
@@ -87,6 +102,7 @@ async function analyzeCodebaseInternal(
   const openai = new OpenAI({ apiKey: apiKey as string })
 
   const apiCall = async () => {
+    vscode.window.setStatusBarMessage("Analyzing code...", 5000)
     const completion = await openai.beta.chat.completions.parse({
       model: "o3-mini",
       messages: [
@@ -103,7 +119,15 @@ async function analyzeCodebaseInternal(
     return completion.choices[0].message.parsed
   }
 
-  return retryWithExponentialBackoff(apiCall)
+  return retryWithExponentialBackoff(
+    apiCall,
+    1000,
+    2,
+    true,
+    10,
+    [RateLimitError as unknown as ErrorConstructor],
+    60000
+  )
 }
 
 export async function analyze(
@@ -114,10 +138,12 @@ export async function analyze(
     const issuesContext = JSON.stringify(kuzuIssues, null, 2)
     const fullUserContent = `${userContent}\n\n## Additional Context\n### Graph Issues:\n${issuesContext}`
 
+    vscode.window.setStatusBarMessage("Analyzing file...", 30000)
     const response = await analyzeCodebaseInternal(
       analysisInstructions,
       fullUserContent
     )
+    vscode.window.setStatusBarMessage("Analysis complete", 3000)
 
     if (!response || !response.issues) {
       console.error("Invalid response from API:", response)
@@ -127,6 +153,9 @@ export async function analyze(
     return response.issues
   } catch (error) {
     console.error("Error in analyze function:", error)
+    vscode.window.showErrorMessage(
+      `Analysis error: ${error instanceof Error ? error.message : "Unknown error"}`
+    )
     return []
   }
 }
@@ -140,6 +169,7 @@ export async function getClarification(prompt: string): Promise<string> {
   const openai = new OpenAI({ apiKey: apiKey as string })
 
   const apiCall = async () => {
+    vscode.window.setStatusBarMessage("Getting clarification...", 5000)
     const completion = await openai.beta.chat.completions.parse({
       model: "o3-mini",
       messages: [{ role: "user", content: prompt }],
@@ -153,7 +183,15 @@ export async function getClarification(prompt: string): Promise<string> {
     return completion.choices[0].message.parsed.response
   }
 
-  return retryWithExponentialBackoff(apiCall)
+  return retryWithExponentialBackoff(
+    apiCall,
+    1000,
+    2,
+    true,
+    5,
+    [RateLimitError as unknown as ErrorConstructor],
+    30000
+  )
 }
 
 function sleep(ms: number): Promise<void> {

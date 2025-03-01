@@ -16,6 +16,7 @@ import type { Issue } from "./types"
 let initializationPromise: Promise<KuzuConnection> | undefined
 const gitignorePromise = getGitignorePatterns()
 let currentIssues: Issue[] = []
+let workspaceIssues: Issue[] = [] // Added to store workspace analysis issues
 let isAnalyzing = false
 
 async function getGitignorePatterns(): Promise<Ignore> {
@@ -225,6 +226,57 @@ async function handleDocumentUpdate(
   }
 }
 
+// New function to display all issues in a webview
+function showAllIssues(issues: Issue[]) {
+  const panel = vscode.window.createWebviewPanel(
+    "shiftV2AllIssues",
+    "All Issues",
+    vscode.ViewColumn.One,
+    { enableScripts: true }
+  )
+
+  const html = `
+    <html>
+      <head>
+        <style>
+          body { font-family: sans-serif; padding: 20px; }
+          .issue { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; }
+          button { margin-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <h1>All Issues</h1>
+        ${issues
+          .map(
+            (issue, index) => `
+          <div class="issue">
+            <h3>${issue.description}</h3>
+            <p>File: ${issue.file}</p>
+            <p>Location: ${issue.location}</p>
+            <button onclick="vscode.postMessage({command: 'openIssue', index: ${index}})">View Details</button>
+          </div>
+        `
+          )
+          .join("")}
+        <script>
+          const vscode = acquireVsCodeApi();
+        </script>
+      </body>
+    </html>
+  `
+
+  panel.webview.html = html
+
+  panel.webview.onDidReceiveMessage((message) => {
+    if (message.command === "openIssue") {
+      const index = message.index
+      if (index >= 0 && index < issues.length) {
+        showIssueDetails(issues[index])
+      }
+    }
+  })
+}
+
 export function activate(context: vscode.ExtensionContext) {
   console.debug("Activating Shift-V2 extension")
   if (
@@ -316,42 +368,72 @@ export function activate(context: vscode.ExtensionContext) {
         return
       }
 
-      const connectionResult = await tryCatch(initializationPromise)
-      if (connectionResult.error) {
-        console.error("Analysis failed:", connectionResult.error)
-        vscode.window.showErrorMessage(
-          "Failed to initialize database. Check the logs for details."
+      if (isAnalyzing) {
+        vscode.window.showInformationMessage(
+          "Analysis is already in progress. Please wait for it to complete."
         )
         return
       }
 
-      const igResult = await tryCatch(gitignorePromise)
-      if (igResult.error) {
-        console.error("Failed to get ignore patterns:", igResult.error)
-        vscode.window.showErrorMessage(
-          "Failed to get ignore patterns. Check the logs for details."
+      isAnalyzing = true
+
+      try {
+        const connectionResult = await tryCatch(initializationPromise)
+        if (connectionResult.error) {
+          console.error("Analysis failed:", connectionResult.error)
+          vscode.window.showErrorMessage(
+            "Failed to initialize database. Check the logs for details."
+          )
+          return
+        }
+
+        const igResult = await tryCatch(gitignorePromise)
+        if (igResult.error) {
+          console.error("Failed to get ignore patterns:", igResult.error)
+          vscode.window.showErrorMessage(
+            "Failed to get ignore patterns. Check the logs for details."
+          )
+          return
+        }
+
+        console.debug(
+          "Database connection and ignore patterns ready for analysis"
         )
-        return
-      }
 
-      console.debug(
-        "Database connection and ignore patterns ready for analysis"
-      )
-
-      const analyzeResult = await tryCatch(
-        analyzeWorkspace(connectionResult.data, igResult.data)
-      )
-
-      if (analyzeResult.error) {
-        console.error("Analysis failed:", analyzeResult.error)
-        vscode.window.showErrorMessage(
-          "Failed to analyze workspace. Check the logs for details."
+        const analyzeResult = await tryCatch(
+          analyzeWorkspace(connectionResult.data, igResult.data)
         )
-        return
-      }
 
-      console.debug("Analyze command completed")
-      vscode.window.showInformationMessage("Analysis completed.")
+        if (analyzeResult.error) {
+          console.error("Analysis failed:", analyzeResult.error)
+          vscode.window.showErrorMessage(
+            `Failed to analyze workspace: ${analyzeResult.error instanceof Error ? analyzeResult.error.message : "Unknown error"}`
+          )
+          return
+        }
+
+        // Store the issues and show warning message with button
+        workspaceIssues = analyzeResult.data
+        vscode.window
+          .showWarningMessage(
+            `Analysis completed with ${workspaceIssues.length} issues found.`,
+            "View Details"
+          )
+          .then((selection) => {
+            if (selection === "View Details") {
+              showAllIssues(workspaceIssues)
+            }
+          })
+
+        console.debug("Analyze command completed")
+      } catch (error) {
+        console.error("Analysis failed:", error)
+        vscode.window.showErrorMessage(
+          `Analysis failed: ${error instanceof Error ? error.message : "Unknown error"}`
+        )
+      } finally {
+        isAnalyzing = false
+      }
     }
   )
 
