@@ -504,7 +504,7 @@ function getScripts(): string {
       if (container) {
         container.style.display = 'block';
       }
-
+      
       // Add hover effect for code lines
       document.querySelectorAll('.code-line-wrapper').forEach(wrapper => {
         wrapper.addEventListener('mouseenter', () => {
