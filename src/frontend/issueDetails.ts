@@ -492,7 +492,7 @@ function getScripts(): string {
       // Format code block with line numbers
       const codeBlock = document.getElementById('code-block');
       if (codeBlock) {
-        const lines = codeBlock.innerText.split('\\n');
+        const lines = codeBlock.innerText.split('\n');
         codeBlock.innerHTML = lines
           .map(line => {
             const colonIndex = line.indexOf(':');
@@ -505,12 +505,6 @@ function getScripts(): string {
             </div>\`;
           })
           .join('');
-      }
-
-      // Show code container by default
-      const container = document.getElementById('code-snippet-container');
-      if (container) {
-        container.style.display = 'block';
       }
 
       // Setup reasoning toggle
@@ -555,7 +549,7 @@ function getScripts(): string {
       const lines = Array.from(codeBlock.getElementsByClassName('code-line'))
         .map(span => span.innerText);
 
-      navigator.clipboard.writeText(lines.join('\\n'))
+      navigator.clipboard.writeText(lines.join('\n'))
         .then(
           () => showFeedback('Code copied to clipboard!'),
           () => showFeedback('Failed to copy code.')
@@ -598,10 +592,10 @@ function getIssueDetailsHtml(
     ? `<div class="code-snippet">
         <div class="code-snippet-header">
           <h2>Code Snippet</h2>
-          <button class="secondary" onclick="toggleCode()">Hide</button>
+          <button class="secondary" onclick="toggleCode()">Show</button>
         </div>
         <div class="code-container" style="position: relative;">
-          <div id="code-snippet-container" class="code-box" style="max-height: 400px;">
+          <div id="code-snippet-container" class="code-box" style="max-height: 400px; display: none;">
             <pre id="code-block">${escapeHtml(codeSnippet)}</pre>
           </div>
           <button class="copy-code secondary" onclick="copyCode()">Copy</button>
