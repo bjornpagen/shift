@@ -1,8 +1,8 @@
 {
-  "name": "shiftv2",
-  "displayName": "ShiftV2: Real-Time Architectural Guidance",
+  "name": "shift",
+  "displayName": "Shift: Real-Time Architectural Guidance",
   "description": "Provides real-time architectural guidance by analyzing your codebase for design inefficiencies.",
-  "version": "0.0.1",
+  "version": "1.0.1",
   "publisher": "shiftv2dev",
   "license": "MIT",
   "repository": {
@@ -23,9 +23,9 @@
   "contributes": {
     "configuration": {
       "type": "object",
-      "title": "Shift-V2 Settings",
+      "title": "Shift Settings",
       "properties": {
-        "shift-v2.openaiApiKey": {
+        "shift.openaiApiKey": {
           "type": "string",
           "default": "",
           "description": "OpenAI API Key for O3-Mini model"
@@ -34,16 +34,16 @@
     },
     "commands": [
       {
-        "command": "shift-v2.initialLoad",
-        "title": "Shift-V2: Initial Load Workspace"
+        "command": "shift.initialLoad",
+        "title": "Shift: Initial Load Workspace"
       },
       {
-        "command": "shift-v2.analyze",
-        "title": "Shift-V2: Analyze Workspace"
+        "command": "shift.analyze",
+        "title": "Shift: Analyze Workspace"
       },
       {
-        "command": "shift-v2.showAllIssues",
-        "title": "Shift-V2: Show All Issues"
+        "command": "shift.showAllIssues",
+        "title": "Shift: Show All Issues"
       }
     ]
   },
