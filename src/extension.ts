@@ -472,9 +472,6 @@ export function activate(context: vscode.ExtensionContext) {
       )
 
       await analyzeWorkspace(connectionResult.data, igResult.data, addToQueue)
-      vscode.window.showInformationMessage(
-        "Workspace analysis jobs added to queue."
-      )
     }
   )
 
@@ -496,7 +493,6 @@ export function activate(context: vscode.ExtensionContext) {
         for (const issue of fileIssues) {
           const lineRange = parseLineRange(issue.location)
           if (lineRange && line >= lineRange.start && line <= lineRange.end) {
-            const issueIndex = fileIssues.indexOf(issue)
             const hoverContent = new vscode.MarkdownString()
             hoverContent.appendMarkdown(`**Issue:** ${issue.description}\n\n`)
             hoverContent.appendMarkdown(
@@ -506,8 +502,8 @@ export function activate(context: vscode.ExtensionContext) {
               `**Suggestion:** ${issue.suggestion}\n\n`
             )
             hoverContent.appendMarkdown(
-              `[Open Details](command:shift-v2.openIssueDetails?${encodeURIComponent(
-                JSON.stringify([filePath, issueIndex])
+              `[View Details](command:_shift-v2.showIssueDetails?${encodeURIComponent(
+                JSON.stringify([issue])
               )})`
             )
             hoverContent.isTrusted = true
@@ -519,14 +515,11 @@ export function activate(context: vscode.ExtensionContext) {
     }
   )
 
-  const openIssueDetailsCommand = vscode.commands.registerCommand(
-    "shift-v2.openIssueDetails",
-    (filePath: string, issueIndex: number) => {
-      const fileIssues = issuesByFile.get(filePath)
-      if (fileIssues && issueIndex >= 0 && issueIndex < fileIssues.length) {
-        const issue = fileIssues[issueIndex]
-        showIssueDetails(issue)
-      }
+  // Register a private command to show issue details directly from hover
+  const showIssueDetailsCommand = vscode.commands.registerCommand(
+    "_shift-v2.showIssueDetails",
+    (issue: Issue) => {
+      showIssueDetails(issue)
     }
   )
 
@@ -543,7 +536,7 @@ export function activate(context: vscode.ExtensionContext) {
     showAllIssuesCommand,
     saveListener,
     hoverProvider,
-    openIssueDetailsCommand
+    showIssueDetailsCommand
   )
 
   vscode.window.onDidChangeVisibleTextEditors(

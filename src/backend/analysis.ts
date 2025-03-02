@@ -5,10 +5,22 @@ import { z } from "zod"
 import type { Issue, KuzuIssue } from "../types"
 import { tryCatch } from "../utils/try-catch"
 
+// Define the Location schema as an optional struct
+const LocationSchema = z
+  .object({
+    startLine: z.number().describe("Starting line number of the issue"),
+    endLine: z.number().describe("Ending line number of the issue")
+  })
+  .optional()
+  .describe("Line range of the issue, or null if not location-specific")
+
+// Updated Issue schema with the new LocationSchema
 const IssueSchema = z.object({
-  file: z.string().describe("Full file path"),
-  location: z.string().describe("Specific lines (e.g., 'lines 10-15')"),
-  description: z.string().describe("Concise summary (max 100 characters)"),
+  file: z.string().describe("Full file path where the issue occurs"),
+  location: LocationSchema,
+  description: z
+    .string()
+    .describe("Concise summary of the issue (max 100 characters)"),
   explanation: z
     .string()
     .describe("Detailed, measurable impact (3-5 sentences)"),
@@ -16,22 +28,17 @@ const IssueSchema = z.object({
   reasoning: z
     .string()
     .describe(
-      "Detailed explanation of why this is an issue and how it affects the system"
+      "Detailed explanation of why this is an issue and its system impact"
     )
 })
 
 const AnalysisSchema = z.object({
   issues: z
     .array(IssueSchema)
-    .describe(
-      "Array of architectural issues found in the codebase. If no issues are found, return an empty array ([]) to indicate no problems, rather than providing a vague or unnecessary statement."
-    )
+    .describe("Array of architectural issues; empty array if none found")
 })
 
-const ClarificationSchema = z.object({
-  response: z.string().describe("Clarification response")
-})
-
+// Simplified analysis instructions with location guidance moved to schema
 const analysisInstructions = `
 You are an AI assistant tasked with analyzing codebases for **architectural issues**. Architectural issues are problems that significantly impact the system's performance, scalability, maintainability, or other key qualities. They are **not** stylistic preferences, syntax errors, linter warnings, or minor programming mistakes.
 
@@ -40,17 +47,11 @@ Note: The code provided has line numbers prepended to each line, like '1: functi
 ## Instructions for Analysis:
 - Focus on identifying architectural issues within this snippet and its connections.
 - Identify issues with a **clear, measurable, and current impact** on performance, scalability, or maintainability.
-- Issues must be based on concrete evidence from the current system, not on hypothetical scenarios or future assumptions.
-- Do **not** flag stylistic choices, syntax errors, or minor programming mistakes unless they directly contribute to a measurable architectural issue.
-
-### Bad Examples of Issues:
-1. **Hypothetical Performance Issue:**
-   - **Issue:** Synchronous file reading in \`sql-parse/mysql.ts\` could cause delays with large SQL dumps.
-   - **Details:** The module uses \`fs.readFileSync\` to read the SQL file, which blocks the event loop during file I/O operations. In scenarios where very large SQL dumps are processed or when this code is repurposed in environments that require high responsiveness, this synchronous operation can introduce noticeable delays.
-   - **Why it's bad:** While true, in this particular codebase, which is a CLI tool, this is an unrealistic scenario. There’s no evidence that large SQL dumps are being processed or that delays are occurring in the current system. Flagging this assumes future conditions without current measurable impact.
+- Issues must be based on concrete evidence from the current system, not hypothetical scenarios or future assumptions.
+- Do **not** flag stylistic choices, syntax errors, or minor mistakes unless they contribute to a measurable architectural issue.
 
 ### ALWAYS CHIME IN IF:
-- You see a pattern that suggests a library, tool, or architectural choice is not a good fit for the project.
+- You see a pattern suggesting a library, tool, or architectural choice is unfit for the project.
 `
 
 async function retryWithExponentialBackoff<T>(
@@ -139,6 +140,9 @@ async function analyzeCodebaseInternal(
   )
 }
 
+// Schema response type
+type SchemaIssue = z.infer<typeof IssueSchema>
+
 export async function analyze(
   userContent: string,
   kuzuIssues: KuzuIssue[]
@@ -157,7 +161,19 @@ export async function analyze(
       return []
     }
 
-    return response.issues
+    // Convert SchemaIssue[] to Issue[] by formatting the location with "lines " prefix
+    return response.issues.map(
+      (issue: SchemaIssue): Issue => ({
+        file: issue.file,
+        location: issue.location
+          ? `lines ${issue.location.startLine}-${issue.location.endLine}`
+          : "",
+        description: issue.description,
+        explanation: issue.explanation,
+        suggestion: issue.suggestion,
+        reasoning: issue.reasoning
+      })
+    )
   } catch (error) {
     console.error("Error in analyze function:", error)
     vscode.window.showErrorMessage(
@@ -165,39 +181,6 @@ export async function analyze(
     )
     return []
   }
-}
-
-export async function getClarification(prompt: string): Promise<string> {
-  const config = vscode.workspace.getConfiguration("shift-v2")
-  const apiKey = config.get("openaiApiKey")
-  if (!apiKey) {
-    throw new Error("OpenAI API key is not set.")
-  }
-  const openai = new OpenAI({ apiKey: apiKey as string })
-
-  const apiCall = async () => {
-    const completion = await openai.beta.chat.completions.parse({
-      model: "o3-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: zodResponseFormat(ClarificationSchema, "clarification")
-    })
-
-    if (!completion.choices[0].message.parsed) {
-      throw new Error("Failed to parse response from OpenAI API.")
-    }
-
-    return completion.choices[0].message.parsed.response
-  }
-
-  return retryWithExponentialBackoff(
-    apiCall,
-    1000,
-    2,
-    true,
-    5,
-    [RateLimitError as unknown as ErrorConstructor],
-    30000
-  )
 }
 
 function sleep(ms: number): Promise<void> {
