@@ -166,7 +166,11 @@ export async function analyzeWorkspace(
         continue
       }
 
-      let analysisContext = `## File Analysis\n${filePath}\n\n\`\`\`typescript\n${fileContent}\n\`\`\`\n\n`
+      // Prepend line numbers to the main file content
+      const lines = fileContent.split("\n")
+      const numberedLines = lines.map((line, index) => `${index + 1}: ${line}`)
+      const numberedFileContent = numberedLines.join("\n")
+      let analysisContext = `## File Analysis\n${filePath}\n\n\`\`\`typescript\n${numberedFileContent}\n\`\`\`\n\n`
 
       if (calledFunctionsArray.length > 0) {
         analysisContext += "\n## Function Dependencies\n\n"
@@ -224,12 +228,16 @@ export async function analyzeWorkspace(
               functionInfo.startLine - 1,
               functionInfo.endLine
             )
-            const functionCode = functionLines.join("\n")
+            // Prepend actual line numbers for dependent function
+            const functionLinesWithNumbers = functionLines.map(
+              (line, index) => `${functionInfo.startLine + index}: ${line}`
+            )
+            const numberedFunctionCode = functionLinesWithNumbers.join("\n")
 
             return {
               name: functionInfo.name,
               path: functionInfo.path,
-              code: functionCode
+              code: numberedFunctionCode
             }
           } catch (error) {
             console.error(
