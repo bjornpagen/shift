@@ -260,7 +260,6 @@ export async function showIssueDetails(issue: Issue) {
           `Description: ${issue.description}`,
           `Explanation: ${issue.explanation}`,
           `Suggestion: ${issue.suggestion}`,
-          `Reasoning: ${issue.reasoning}`,
           ...(codeSnippet ? [`Code Snippet:\n${codeSnippet}`] : [])
         ].join("\n")
         void vscode.env.clipboard.writeText(content).then(
@@ -458,13 +457,6 @@ function getStyles(): string {
       opacity: 1;
       transform: translateY(0);
     }
-
-    #reasoning {
-      background: var(--vscode-sideBar-background);
-      border-radius: 4px;
-      padding: 12px;
-      margin-top: 8px;
-    }
   `
 }
 
@@ -511,19 +503,6 @@ function getScripts(): string {
       const container = document.getElementById('code-snippet-container');
       if (container) {
         container.style.display = 'block';
-      }
-
-      // Setup reasoning toggle
-      const toggleButton = document.getElementById('toggle-reasoning');
-      if (toggleButton) {
-        toggleButton.addEventListener('click', () => {
-          const reasoningDiv = document.getElementById('reasoning');
-          if (reasoningDiv) {
-            const isHidden = reasoningDiv.style.display === 'none';
-            reasoningDiv.style.display = isHidden ? 'block' : 'none';
-            toggleButton.innerText = isHidden ? 'Hide Reasoning' : 'Show Reasoning';
-          }
-        });
       }
 
       // Add hover effect for code lines
@@ -609,16 +588,6 @@ function getIssueDetailsHtml(
       </div>`
     : ""
 
-  const reasoningSection = `<div class="detail-item">
-      <div class="label">Reasoning</div>
-      <div class="value">
-        <button class="secondary" id="toggle-reasoning">Show Reasoning</button>
-        <div id="reasoning" style="display: none;">
-          <p>${escapeHtml(issue.reasoning)}</p>
-        </div>
-      </div>
-    </div>`
-
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -646,7 +615,6 @@ function getIssueDetailsHtml(
         <div class="label">Suggestion</div>
         <div class="value">${escapeHtml(issue.suggestion)}</div>
       </div>
-      ${reasoningSection}
     </div>
     ${codeSection}
     <div class="actions">

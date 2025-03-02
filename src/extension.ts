@@ -446,8 +446,8 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(
           "Database initialization has not started."
         )
-        return
-      }
+      return
+    }
 
       const connectionResult = await tryCatch(initializationPromise)
       if (connectionResult.error) {
@@ -455,8 +455,8 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(
           "Failed to initialize database. Check the logs for details."
         )
-        return
-      }
+      return
+    }
 
       const igResult = await tryCatch(gitignorePromise)
       if (igResult.error) {
